@@ -1,0 +1,79 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Liturgi GKPB — Prisma Schema (v2: PDF/Word viewer, not a block builder)
+// Admin uploads a PDF or Word file per jemaat + tanggal + sesi. The public
+// side just displays that file — no re-parsing, no block reconstruction.
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Jemaat {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  slug      String   @unique // e.g. "hosana-kwanji" -> hosana-kwanji.liturgigkpb.com
+  name      String
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  liturgi Liturgi[]
+
+  @@map("jemaat")
+}
+
+model Pendeta {
+  id     String   @id @default(dbgenerated("gen_random_uuid()"))
+  code   String   @unique
+  name   String
+  titles String[] @default([])
+
+  liturgi Liturgi[]
+
+  @@map("pendeta")
+}
+
+enum Sesi {
+  PAGI
+  SORE
+}
+
+enum LiturgiStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum FileType {
+  PDF
+  DOCX
+}
+
+model Liturgi {
+  id           String        @id @default(dbgenerated("gen_random_uuid()"))
+  jemaatId     String
+  jemaat       Jemaat        @relation(fields: [jemaatId], references: [id], onDelete: Cascade)
+  tanggal      DateTime
+  sesi         Sesi
+  jamMulai     String? // display only, e.g. "07:30" — not fixed, schedules shift week to week
+  mingguKe     String?
+  tema         String?
+  warnaLiturgi String?
+  pendetaId    String?
+  pendeta      Pendeta?      @relation(fields: [pendetaId], references: [id])
+  status       LiturgiStatus @default(DRAFT)
+
+  fileUrl          String // public URL in the liturgi-files bucket
+  fileType         FileType
+  originalFilename String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@unique([jemaatId, tanggal, sesi])
+  @@index([jemaatId, tanggal])
+  @@map("liturgi")
+}
