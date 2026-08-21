@@ -206,8 +206,48 @@ watch(
     class="relative flex flex-col overflow-hidden rounded-lg border border-line bg-paper"
     :class="isFullscreen ? 'h-screen' : 'h-[78vh]'"
   >
+    <!-- static toolbar (desktop only): sits right at the top, in normal
+         flow — not floating over the page like the mobile version, so it
+         never overlaps content. Mobile keeps the floating bottom pill
+         (thumb-reachable), unchanged. -->
+    <div
+      v-if="status === 'ready'"
+      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-white px-2 py-1.5 lg:flex"
+    >
+      <button type="button" class="toolbar-btn" title="Perkecil tampilan" aria-label="Perkecil tampilan" :disabled="zoomIndex === 0" @click="zoomOut">
+        <ZoomOut class="h-4 w-4" />
+      </button>
+      <button type="button" class="min-w-[3.25rem] rounded-full px-1.5 py-1 text-center text-xs font-medium tabular-nums text-muted hover:text-ink" title="Kembalikan ke ukuran normal (100%)" @click="resetZoom">
+        {{ Math.round(zoom * 100) }}%
+      </button>
+      <button type="button" class="toolbar-btn" title="Perbesar tampilan" aria-label="Perbesar tampilan" :disabled="zoomIndex === ZOOM_STEPS.length - 1" @click="zoomIn">
+        <ZoomIn class="h-4 w-4" />
+      </button>
+      <div class="mx-1 h-5 w-px bg-line" />
+      <button type="button" class="toolbar-btn" title="Halaman sebelumnya" aria-label="Halaman sebelumnya" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">
+        <ChevronLeft class="h-4 w-4" />
+      </button>
+      <span class="min-w-[3rem] text-center text-xs font-medium tabular-nums text-muted" title="Halaman saat ini">
+        {{ currentPage }} / {{ numPages }}
+      </span>
+      <button type="button" class="toolbar-btn" title="Halaman berikutnya" aria-label="Halaman berikutnya" :disabled="currentPage >= numPages" @click="goToPage(currentPage + 1)">
+        <ChevronRight class="h-4 w-4" />
+      </button>
+      <div class="mx-1 h-5 w-px bg-line" />
+      <button type="button" class="toolbar-btn" title="Layar penuh" aria-label="Layar penuh" @click="toggleFullscreen">
+        <Maximize2 v-if="!isFullscreen" class="h-4 w-4" />
+        <Minimize2 v-else class="h-4 w-4" />
+      </button>
+      <a :href="url" download class="toolbar-btn" title="Unduh berkas liturgi (PDF)" aria-label="Unduh berkas liturgi">
+        <Download class="h-4 w-4" />
+      </a>
+      <button type="button" class="toolbar-btn" title="Petunjuk penggunaan" aria-label="Petunjuk penggunaan" @click="openGuide">
+        <HelpCircle class="h-4 w-4" />
+      </button>
+    </div>
+
     <!-- scrollable page area -->
-    <div class="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 sm:px-6">
+    <div class="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 sm:px-6 lg:pb-6">
       <div
         v-if="status === 'loading'"
         class="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted"
@@ -232,10 +272,11 @@ watch(
       />
     </div>
 
-    <!-- floating toolbar: kept at the bottom so it's easy to reach with a thumb on a phone -->
+    <!-- floating toolbar (mobile/tablet only): kept at the bottom so it's
+         easy to reach with a thumb. Desktop uses the static bar above instead. -->
     <div
       v-if="status === 'ready'"
-      class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3"
+      class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
         class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-[0_8px_24px_-8px_rgba(30,38,32,0.25)] backdrop-blur"

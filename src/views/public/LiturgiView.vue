@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { fetchTenantBySlug } from '@/lib/tenant'
 import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
-import { Church, Sun, Moon, CalendarDays, BookOpenText, Loader2 } from 'lucide-vue-next'
+import { Sun, Moon, CalendarDays, BookOpenText, Loader2, MapPinOff, CircleAlert, CalendarX } from 'lucide-vue-next'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -63,14 +63,12 @@ onMounted(async () => {
     <div class="h-1.5 w-full bg-gradient-to-r from-accent via-accent-hover to-accent" />
 
     <div class="mx-auto max-w-5xl px-3 py-6 sm:px-4 sm:py-8 lg:grid lg:grid-cols-[280px_1fr] lg:items-start lg:gap-8">
-      <!-- letterhead-style header — sticky on desktop so it stays in view
-           while the PDF/Word content on the right scrolls -->
-      <div class="flex flex-col items-center gap-3 text-center lg:sticky lg:top-8 lg:items-center">
-        <div class="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white shadow-sm">
-          <Church class="h-6 w-6 text-accent" stroke-width="1.75" />
-        </div>
-
-        <div class="space-y-1">
+      <!-- letterhead-style header — sticky on desktop, with a vertical rule
+           on its right so the two columns read like a printed bulletin -->
+      <div
+        class="flex flex-col items-center gap-3 text-center lg:sticky lg:top-8 lg:items-center lg:border-r lg:border-line lg:pr-8"
+      >
+        <div class="space-y-0.5">
           <p v-if="jemaatName" class="font-display text-lg font-semibold leading-tight text-ink">{{ jemaatName }}</p>
           <p class="flex items-center justify-center gap-1.5 text-xs text-muted">
             <CalendarDays class="h-3.5 w-3.5" />
@@ -119,18 +117,23 @@ onMounted(async () => {
            where this stacks below the header instead of beside it. -->
       <div class="mt-5 space-y-5 lg:mt-0">
         <!-- tenant not resolved (bad link / not on a jemaat subdomain) -->
-        <p v-if="!tenantLoading && tenant.kind !== 'tenant'" class="text-center text-sm text-muted">
-          Tautan ini tidak mengarah ke jemaat manapun. Periksa kembali alamat yang Anda buka.
-        </p>
-        <p v-else-if="!tenantLoading && tenant.kind === 'tenant' && !jemaatId" class="text-center text-sm text-muted">
-          Jemaat tidak ditemukan. Periksa kembali tautan yang Anda buka.
-        </p>
+        <div v-if="!tenantLoading && tenant.kind !== 'tenant'" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
+          <MapPinOff class="h-6 w-6 text-muted" stroke-width="1.5" />
+          <p class="text-sm text-muted">Tautan ini tidak mengarah ke jemaat manapun. Periksa kembali alamat yang Anda buka.</p>
+        </div>
+        <div v-else-if="!tenantLoading && tenant.kind === 'tenant' && !jemaatId" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
+          <MapPinOff class="h-6 w-6 text-muted" stroke-width="1.5" />
+          <p class="text-sm text-muted">Jemaat tidak ditemukan. Periksa kembali tautan yang Anda buka.</p>
+        </div>
 
         <div v-else-if="tenantLoading || liturgi.loading" class="flex flex-col items-center gap-2 py-10 text-sm text-muted">
           <Loader2 class="h-5 w-5 animate-spin text-accent" />
           <p>Memuat…</p>
         </div>
-        <p v-else-if="liturgi.error" class="text-center text-sm text-danger">{{ liturgi.error }}</p>
+        <div v-else-if="liturgi.error" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
+          <CircleAlert class="h-6 w-6 text-danger" stroke-width="1.5" />
+          <p class="text-sm text-danger">{{ liturgi.error }}</p>
+        </div>
 
         <template v-else-if="liturgi.current">
           <!-- shown on mobile only — desktop shows the copy in the left column instead -->
@@ -161,7 +164,10 @@ onMounted(async () => {
           />
         </template>
 
-        <p v-else class="text-center text-sm text-muted">Belum ada liturgi untuk sesi ini.</p>
+        <p v-else class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center text-sm text-muted">
+          <CalendarX class="h-6 w-6 text-muted" stroke-width="1.5" />
+          Belum ada liturgi untuk sesi ini.
+        </p>
       </div>
     </div>
   </div>

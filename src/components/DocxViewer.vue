@@ -62,7 +62,22 @@ watch(() => props.url, load)
     class="relative flex flex-col overflow-hidden rounded-lg border border-line bg-paper"
     :class="isFullscreen ? 'h-screen' : 'min-h-[50vh]'"
   >
-    <div class="relative flex-1 overflow-y-auto px-3 pb-20 pt-3 sm:px-6">
+    <!-- static toolbar (desktop only), same treatment as PdfViewer: sits at
+         the top in normal flow instead of floating over the content. -->
+    <div
+      v-if="status === 'ready'"
+      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-white px-2 py-1.5 lg:flex"
+    >
+      <button type="button" class="toolbar-btn" title="Layar penuh" aria-label="Layar penuh" @click="toggleFullscreen">
+        <Maximize2 v-if="!isFullscreen" class="h-4 w-4" />
+        <Minimize2 v-else class="h-4 w-4" />
+      </button>
+      <a :href="url" download class="toolbar-btn" title="Unduh berkas liturgi (Word)" aria-label="Unduh berkas liturgi">
+        <Download class="h-4 w-4" />
+      </a>
+    </div>
+
+    <div class="relative flex-1 overflow-y-auto px-3 pb-20 pt-3 sm:px-6 lg:pb-6">
       <div
         v-if="status === 'loading'"
         class="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted"
@@ -89,9 +104,10 @@ watch(() => props.url, load)
       />
     </div>
 
+    <!-- floating toolbar (mobile/tablet only) -->
     <div
       v-if="status === 'ready'"
-      class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3"
+      class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
         class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-[0_8px_24px_-8px_rgba(30,38,32,0.25)] backdrop-blur"

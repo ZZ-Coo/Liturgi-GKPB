@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { fetchAllJemaat, buildTenantUrl, type JemaatRecord } from '@/lib/tenant'
-import { Church, ChevronDown, MapPin } from 'lucide-vue-next'
+import { Church, ChevronDown, MapPin, ChevronRight } from 'lucide-vue-next'
 
 const jemaatList = ref<JemaatRecord[]>([])
 const loading = ref(true)
@@ -33,10 +33,11 @@ const groups = computed(() => {
 </script>
 
 <template>
-  <div
-    class="min-h-screen bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,theme(colors.paper)_55%)] px-4 py-10"
-  >
-    <div class="mx-auto max-w-xl space-y-6">
+  <div class="min-h-screen bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,theme(colors.paper)_55%)]">
+    <!-- thin decorative bar, same signature as the tenant/liturgi page -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-accent via-accent-hover to-accent" />
+
+    <div class="mx-auto max-w-xl space-y-6 px-4 py-10">
       <div class="flex flex-col items-center gap-2 text-center">
         <div class="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white shadow-sm">
           <Church class="h-6 w-6 text-accent" stroke-width="1.75" />
@@ -45,6 +46,9 @@ const groups = computed(() => {
           <p class="label-eyebrow">Liturgi GKPB</p>
           <h1 class="font-display text-xl font-semibold text-ink">Pilih Jemaat</h1>
         </div>
+        <p v-if="!loading && jemaatList.length" class="text-xs text-muted">
+          {{ jemaatList.length }} jemaat di {{ groups.length }} daerah
+        </p>
       </div>
 
       <p v-if="loading" class="text-center text-sm text-muted">Memuat daftar jemaat…</p>
@@ -76,13 +80,15 @@ const groups = computed(() => {
             </span>
           </summary>
 
-          <ul class="border-t border-line">
+          <ul class="divide-y divide-line border-t border-line">
             <li v-for="jemaat in group.jemaat" :key="jemaat.id">
               <a
                 :href="buildTenantUrl(jemaat.slug)"
-                class="flex items-center justify-between px-4 py-2.5 pl-10 text-sm text-ink hover:bg-accent-soft/40"
+                class="group/link flex items-center gap-2.5 px-4 py-2.5 pl-6 text-sm text-ink hover:bg-accent-soft/40"
               >
-                {{ jemaat.name }}
+                <Church class="h-3.5 w-3.5 shrink-0 text-muted" stroke-width="1.75" />
+                <span class="flex-1">{{ jemaat.name }}</span>
+                <ChevronRight class="h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover/link:opacity-100" />
               </a>
             </li>
           </ul>
