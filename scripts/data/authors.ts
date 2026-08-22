@@ -1,50 +1,65 @@
 // scripts/data/authors.ts
-export interface AuthorServiceHistory {
-  ministryId: string
-  from: string
-  until: string
-}
+//
+// Entries marked `verified: true` were cross-checked against a real
+// source (balichurchsynod.org — the official GKPB sinode site — or the
+// jemaat's own Tata Ibadah documents/news coverage) and their `titles`
+// reflect what that source actually states.
+//
+// Entries marked `verified: false` are as originally recycled from the
+// puji-janji project with no confirmed source — treat name spelling and
+// especially `titles` as unverified until checked. Some may well be
+// correct, but none of the round "2010–Sekarang"-style service-history
+// dates from the original data could be confirmed anywhere, so that
+// field was dropped entirely rather than kept as unverifiable filler.
+
 export interface AuthorEntry {
   name: string
   titles: string[]
-  serviceHistory: AuthorServiceHistory[]
+  verified: boolean
 }
 
 export const AUTHORS: Record<string, AuthorEntry> = {
-  IWM:    { name: "I Wayan Mariasa",                             titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2010", until: "Sekarang" }] },
-  KDPA:   { name: "Kadek Dwi Prayoga Aditya",                   titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2015", until: "Sekarang" }] },
-  ISUN:   { name: "Dewi Sundari",                               titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2012", until: "Sekarang" }] },
-  VMYB:   { name: "Viyata Margareta Yuliana Bolla, S.Si. Teol", titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2014", until: "Sekarang" }] },
-  MFGA:   { name: "Made Fennoni Gressia Asrining, S.Si. Teol",  titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2016", until: "Sekarang" }] },
-  IMAAP:  { name: "I Made Andika Adi Putra",                    titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2013", until: "Sekarang" }] },
-  VIJE:   { name: "Julius Jefry Lumansik",                      titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2011", until: "Sekarang" }] },
-  ATAANO: { name: "Martha Yunita Ano",                          titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2018", until: "Sekarang" }] },
-  KAJ:    { name: "Komang Agus Juliawan",                       titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2017", until: "Sekarang" }] },
-  KY:     { name: "Karenda Yucha, S.Si., Teol",                 titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2019", until: "Sekarang" }] },
-  HW:     { name: "Hety Widowaty Soewondo",                     titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2009", until: "Sekarang" }] },
-  PJD:    { name: "Paulina Jasri Danggo",                       titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2020", until: "Sekarang" }] },
-  WAW:    { name: "Wayan Agus Wiratama",                        titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2016", until: "Sekarang" }] },
-  KS:     { name: "Kadek Suriani",                              titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2021", until: "Sekarang" }] },
-  JoJo:   { name: "Jonnie Josua",                               titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2022", until: "Sekarang" }] },
-  PAP:    { name: "Penta Astari Prasetya",                      titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2023", until: "Sekarang" }] },
-  PSA:    { name: "Putu Surya Adinata",                         titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2022", until: "Sekarang" }] },
-  NJL:    { name: "Nafthalia Julita Leander",                   titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2018", until: "Sekarang" }] },
-  CWP:    { name: "Christiana Welda Putranti",                  titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2015", until: "Sekarang" }] },
-  IPEUS:  { name: "I Putu Elika Uria Setiawan",                 titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2023", until: "Sekarang" }] },
-  KBWU:   { name: "Kadek Bagus Wisesa Uryana",                  titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2020", until: "Sekarang" }] },
-  IRHB:   { name: "Izak Rio Hernemus Bainuan",                  titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2017", until: "Sekarang" }] },
-  TW:     { name: "Trifena Wati",                               titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2019", until: "Sekarang" }] },
-  PR:     { name: "Putu Recita",                                titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2021", until: "Sekarang" }] },
-  DS:     { name: "Debora Seilatu",                             titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2018", until: "Sekarang" }] },
-  SH:     { name: "Somenifati Hia",                             titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2016", until: "Sekarang" }] },
-  FPP:    { name: "Fajar Pratama Putra",                        titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2020", until: "Sekarang" }] },
-  A3P:    { name: "Anak Agung Ayu Perani",                      titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2014", until: "Sekarang" }] },
-  DEAP:   { name: "Dewa Gede Adi Pranata",                      titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2022", until: "Sekarang" }] },
-  MHS:    { name: "Merry Handayani Sayuna",                     titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2019", until: "Sekarang" }] },
-  FAO:    { name: "Finsensius Apola Oematan",                   titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2021", until: "Sekarang" }] },
-  YDS:    { name: "Yosef Destian Setiawan",                     titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2023", until: "Sekarang" }] },
-  JVS:    { name: "Gd Jesico Valerius Sasmita",                 titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2022", until: "Sekarang" }] },
-  AS:     { name: "Nyoman Ayu Suryantininghati",                titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2018", until: "Sekarang" }] },
-  GAKLIE: { name: "Gusti Ayu Ketut Lintang Indah Esterlita",    titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2020", until: "Sekarang" }] },
-  AEPTB:  { name: "Anggrayni Eka Putri Tresna Bunga",           titles: [], serviceHistory: [{ ministryId: "sinode-gkpb", from: "2021", until: "Sekarang" }] },
+  // ── Verified against balichurchsynod.org/departemen-gkpb (sinode-level) ──
+  IWM:   { name: "I Wayan Mariasa",              titles: ["S.Si.Teol"],     verified: true },
+  PJD:   { name: "Paulina Jasri Danggo",         titles: ["S.Si.Teol"],     verified: true },
+  A3P:   { name: "A.A. Ayu Perani",              titles: ["M.Th.Kons"],     verified: true },
+  DEAP:  { name: "I Dewa Gede Adi Pranata",      titles: ["S.Th"],          verified: true },
+  NJL:   { name: "Nafthalia Julita Leander",     titles: ["M.Si"],          verified: true },
+  IRHB:  { name: "Izak Rio Hernemus Bainuan",    titles: ["M.Th"],          verified: true },
+  HW:    { name: "Hetty Widowaty",               titles: ["S.Si."],         verified: true }, // spelling per official site (was "Hety ... Soewondo" — surname unconfirmed, dropped)
+
+  // ── Verified against the jemaat's own Tata Ibadah PDFs + independent
+  //    news/alumni-directory coverage (GKPB Jemaat Hosana Kwanji) ─────────
+  KS:    { name: "Ni Kadek Suriani",             titles: ["M.Th"],          verified: true }, // was "Kadek Suriani" (missing "Ni")
+
+  // ── Not yet independently verified — kept as-is from the recycled
+  //    source, titles left empty rather than guessed ─────────────────────
+  KDPA:   { name: "Kadek Dwi Prayoga Aditya",                  titles: [], verified: false },
+  ISUN:   { name: "Dewi Sundari",                              titles: [], verified: false },
+  VMYB:   { name: "Viyata Margareta Yuliana Bolla",            titles: [], verified: false },
+  MFGA:   { name: "Made Fennoni Gressia Asrining",             titles: [], verified: false },
+  IMAAP:  { name: "I Made Andika Adi Putra",                   titles: [], verified: false },
+  VIJE:   { name: "Julius Jefry Lumansik",                     titles: [], verified: false },
+  ATAANO: { name: "Martha Yunita Ano",                         titles: [], verified: false },
+  KAJ:    { name: "Komang Agus Juliawan",                      titles: [], verified: false },
+  KY:     { name: "Karenda Yucha",                             titles: [], verified: false },
+  WAW:    { name: "Wayan Agus Wiratama",                       titles: [], verified: false },
+  JoJo:   { name: "Jonnie Josua",                              titles: [], verified: false },
+  PAP:    { name: "Penta Astari Prasetya",                     titles: [], verified: false },
+  PSA:    { name: "Putu Surya Adinata",                        titles: [], verified: false },
+  CWP:    { name: "Christiana Welda Putranti",                 titles: [], verified: false },
+  IPEUS:  { name: "I Putu Elika Uria Setiawan",                titles: [], verified: false },
+  KBWU:   { name: "Kadek Bagus Wisesa Uryana",                 titles: [], verified: false },
+  TW:     { name: "Trifena Wati",                              titles: [], verified: false },
+  PR:     { name: "Putu Recita",                               titles: [], verified: false },
+  DS:     { name: "Debora Seilatu",                            titles: [], verified: false },
+  SH:     { name: "Somenifati Hia",                            titles: [], verified: false },
+  FPP:    { name: "Fajar Pratama Putra",                       titles: [], verified: false },
+  MHS:    { name: "Merry Handayani Sayuna",                    titles: [], verified: false },
+  FAO:    { name: "Finsensius Apola Oematan",                  titles: [], verified: false },
+  YDS:    { name: "Yosef Destian Setiawan",                    titles: [], verified: false },
+  JVS:    { name: "Gd Jesico Valerius Sasmita",                titles: [], verified: false },
+  AS:     { name: "Nyoman Ayu Suryantininghati",               titles: [], verified: false }, // official site lists "Ni Nyoman Ayu Suryantininghati" — close but not exact, left unverified
+  GAKLIE: { name: "Gusti Ayu Ketut Lintang Indah Esterlita",   titles: [], verified: false },
+  AEPTB:  { name: "Anggrayni Eka Putri Tresna Bunga",          titles: [], verified: false },
 }

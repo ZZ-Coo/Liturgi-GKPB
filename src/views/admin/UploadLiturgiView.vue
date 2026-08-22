@@ -7,6 +7,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
+import { scanPdfCover, matchPendeta } from '@/lib/scan-cover'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   CalendarDays,
@@ -17,6 +18,8 @@ import {
   AlertTriangle,
   FileCheck2,
   Trash2,
+  ScanLine,
+  Loader2,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -40,19 +43,54 @@ let slotCheckToken = 0
 const jemaatList = ref<JemaatRecord[]>([])
 const jemaatId = ref('')
 const tanggal = ref(new Date().toISOString().slice(0, 10))
-const sesi = ref<'PAGI' | 'SORE'>('PAGI')
+const sesi = ref<'PAGI' | 'SIANG' | 'SORE'>('PAGI')
+const jamMulai = ref('')
 const mingguKe = ref('')
 const tema = ref('')
 const warnaLiturgi = ref('')
+const pendetaId = ref('') // optional soft link — set opportunistically, never required to save
+const pendetaNama = ref('') // free text: the actual source of truth for "Dilayani Oleh"
 const status = ref<'DRAFT' | 'PUBLISHED'>('DRAFT')
 const currentFileUrl = ref<string | null>(null)
 const currentFilename = ref<string | null>(null)
 
+interface PendetaOption {
+  id: string
+  name: string
+  titles: string[]
+}
+const pendetaList = ref<PendetaOption[]>([])
+
 const file = ref<File | null>(null)
 const saving = ref(false)
 const error = ref<string | null>(null)
+const scanning = ref(false)
+const scanNote = ref<string | null>(null)
 
 const WARNA_OPTIONS = ['Hijau', 'Putih', 'Ungu', 'Merah', 'Hitam'] as const
+
+// Sesi defaults off whatever jam is typed/scanned in — < 11:00 Pagi,
+// 11:00–14:59 Siang, >= 15:00 Sore. Still a normal <select> underneath so
+// the admin can override it manually; this only sets a sensible starting
+// point instead of always defaulting to Pagi regardless of the actual time.
+function deriveSesiFromJam(jam: string): 'PAGI' | 'SIANG' | 'SORE' | null {
+  const match = jam.match(/(\d{1,2})[.:]/)
+  if (!match) return null
+  const hour = Number(match[1])
+  if (Number.isNaN(hour)) return null
+  if (hour < 11) return 'PAGI'
+  if (hour < 15) return 'SIANG'
+  return 'SORE'
+}
+
+watch(jamMulai, (jam) => {
+  // Sesi is part of the slot's locked identity in edit mode (disabled
+  // <select>) — don't silently change it out from under the admin just
+  // because they tweaked the display-only jam text.
+  if (isEdit.value) return
+  const derived = deriveSesiFromJam(jam)
+  if (derived) sesi.value = derived
+})
 
 async function checkSlot() {
   existingSlot.value = null
@@ -82,19 +120,29 @@ onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
   if (jemaatList.value.length && !jemaatId.value) jemaatId.value = jemaatList.value[0].id
 
+  const { data: pendetaData } = await supabase.from('pendeta').select('id, name, titles').order('name')
+  pendetaList.value = pendetaData ?? []
+
   if (editId) {
     const { data } = await supabase
       .from('liturgi')
-      .select('jemaatId, tanggal, sesi, mingguKe, tema, warnaLiturgi, status, fileUrl, originalFilename')
+      .select(
+        'jemaatId, tanggal, sesi, jamMulai, mingguKe, tema, warnaLiturgi, pendetaId, pendetaNama, status, fileUrl, originalFilename',
+      )
       .eq('id', editId)
       .single()
     if (data) {
       jemaatId.value = data.jemaatId
-      tanggal.value = data.tanggal
+      // Defensive: handles a stray full timestamp gracefully even though
+      // the tanggal column is DATE now (should always be plain "YYYY-MM-DD").
+      tanggal.value = data.tanggal.includes('T') ? data.tanggal.slice(0, 10) : data.tanggal
       sesi.value = data.sesi
+      jamMulai.value = data.jamMulai ?? ''
       mingguKe.value = data.mingguKe ?? ''
       tema.value = data.tema ?? ''
       warnaLiturgi.value = data.warnaLiturgi ?? ''
+      pendetaId.value = data.pendetaId ?? ''
+      pendetaNama.value = data.pendetaNama ?? ''
       status.value = data.status
       currentFileUrl.value = data.fileUrl
       currentFilename.value = data.originalFilename
@@ -102,9 +150,70 @@ onMounted(async () => {
   }
 })
 
+async function detectFromFile() {
+  if (!file.value || !file.value.name.toLowerCase().endsWith('.pdf')) {
+    scanNote.value = 'Deteksi otomatis cuma jalan buat file PDF.'
+    return
+  }
+
+  scanning.value = true
+  scanNote.value = null
+  try {
+    const scanned = await scanPdfCover(file.value)
+    const filled: string[] = []
+
+    if (scanned.tanggal) { tanggal.value = scanned.tanggal; filled.push('tanggal') }
+    if (scanned.jamMulai) { jamMulai.value = scanned.jamMulai; filled.push('jam') }
+    if (scanned.mingguKe) { mingguKe.value = scanned.mingguKe; filled.push('minggu ke') }
+    if (scanned.tema) { tema.value = scanned.tema; filled.push('tema') }
+    if (scanned.warnaLiturgi) { warnaLiturgi.value = scanned.warnaLiturgi; filled.push('warna liturgi') }
+
+    if (scanned.pendetaName) {
+      // Free text always wins — this is what actually shows up, exactly as
+      // scanned (gelar and all), regardless of whether it matches anyone
+      // in the seeded Pendeta table.
+      pendetaNama.value = scanned.pendetaName
+      filled.push('pendeta')
+
+      const matchedId = matchPendeta(scanned.pendetaName, pendetaList.value)
+      if (matchedId) pendetaId.value = matchedId // bonus soft link, not required
+    }
+
+    if (filled.length && !scanNote.value) {
+      scanNote.value = `Terisi otomatis: ${filled.join(', ')}. Cek ulang sebelum simpan.`
+    } else if (!filled.length) {
+      scanNote.value = 'Gak nemu pola cover yang dikenali di halaman 1 — isi manual aja.'
+    }
+  } catch (err) {
+    scanNote.value = err instanceof Error ? `Gagal deteksi: ${err.message}` : 'Gagal deteksi dari file.'
+  } finally {
+    scanning.value = false
+  }
+}
+
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement
   file.value = target.files?.[0] ?? null
+  scanNote.value = null
+}
+
+// The dropdown of seeded pendeta is a shortcut, not the source of truth —
+// picking one just pre-fills the free-text field (still editable after).
+function applyPendetaShortcut(e: Event) {
+  const select = e.target as HTMLSelectElement
+  const picked = pendetaList.value.find((p) => p.id === select.value)
+  if (picked) {
+    pendetaNama.value = picked.name + (picked.titles?.length ? `, ${picked.titles.join(', ')}` : '')
+    pendetaId.value = picked.id
+  }
+  select.value = '' // it's a one-shot trigger, not a persistent selection
+}
+
+// Once the admin hand-edits the name, we can no longer be sure it still
+// matches the linked Pendeta record — drop the soft link rather than risk
+// it silently pointing at the wrong person.
+function onPendetaNamaInput() {
+  pendetaId.value = ''
 }
 
 function jemaatSlug(id: string) {
@@ -173,9 +282,12 @@ async function submit() {
       jemaatId: jemaatId.value,
       tanggal: tanggal.value,
       sesi: sesi.value,
+      jamMulai: jamMulai.value || null,
       mingguKe: mingguKe.value || null,
       tema: tema.value || null,
       warnaLiturgi: warnaLiturgi.value || null,
+      pendetaId: pendetaId.value || null,
+      pendetaNama: pendetaNama.value || null,
       status: status.value,
       fileUrl,
       fileType: fileType ?? undefined, // omit if unchanged in edit mode
@@ -246,11 +358,18 @@ async function remove() {
               <div class="relative">
                 <select v-model="sesi" class="input appearance-none pr-8" :disabled="isEdit">
                   <option value="PAGI">Pagi</option>
+                  <option value="SIANG">Siang</option>
                   <option value="SORE">Sore</option>
                 </select>
                 <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
               </div>
             </div>
+          </div>
+
+          <div>
+            <label class="label-eyebrow mb-1 block">Jam (opsional)</label>
+            <input v-model="jamMulai" type="text" class="input" placeholder="07.30 Wita" />
+            <p class="mt-1 text-xs text-muted">Bukan jam tetap — jadwal bisa geser tiap minggu, isi ulang aja kalau beda.</p>
           </div>
 
           <!-- create-mode only: warns before the identity fields lock in, so a
@@ -278,6 +397,28 @@ async function remove() {
           <div>
             <label class="label-eyebrow mb-1 block">Minggu ke</label>
             <input v-model="mingguKe" type="text" class="input" placeholder="Minggu X Sesudah Trinitatis" />
+          </div>
+          <div>
+            <label class="label-eyebrow mb-1 block">Dilayani Oleh</label>
+            <input
+              v-model="pendetaNama"
+              type="text"
+              class="input"
+              placeholder="Pdt. Nama Lengkap, gelar"
+              @input="onPendetaNamaInput"
+            />
+            <!-- shortcut only — picking one just fills the text field above,
+                 which stays freely editable. Not required, and no name has
+                 to exist here for the text field to be saved. -->
+            <div v-if="pendetaList.length" class="relative mt-1.5">
+              <select class="input appearance-none pr-8 text-xs text-muted" @change="applyPendetaShortcut">
+                <option value="">Isi cepat dari data pendeta…</option>
+                <option v-for="p in pendetaList" :key="p.id" :value="p.id">
+                  {{ p.name }}{{ p.titles?.length ? `, ${p.titles.join(', ')}` : '' }}
+                </option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            </div>
           </div>
           <div>
             <label class="label-eyebrow mb-1 block">Tema</label>
@@ -326,6 +467,19 @@ async function remove() {
               @change="onFileChange"
             />
           </div>
+
+          <button
+            v-if="file"
+            type="button"
+            class="btn w-full justify-center gap-1.5"
+            :disabled="scanning"
+            @click="detectFromFile"
+          >
+            <Loader2 v-if="scanning" class="h-4 w-4 animate-spin" />
+            <ScanLine v-else class="h-4 w-4" />
+            {{ scanning ? 'Membaca cover…' : 'Deteksi dari Berkas' }}
+          </button>
+          <p v-if="scanNote" class="text-xs text-muted">{{ scanNote }}</p>
         </div>
 
         <!-- section 4: publikasi -->

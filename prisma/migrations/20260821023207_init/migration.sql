@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "Sesi" AS ENUM ('PAGI', 'SORE');
+CREATE TYPE "Sesi" AS ENUM ('PAGI', 'SIANG', 'SORE');
 
 -- CreateEnum
 CREATE TYPE "LiturgiStatus" AS ENUM ('DRAFT', 'PUBLISHED');
@@ -33,7 +33,8 @@ CREATE TABLE "pendeta" (
 CREATE TABLE "liturgi" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
     "jemaatId" TEXT NOT NULL,
-    "tanggal" TIMESTAMP(3) NOT NULL,
+    "pendetaNama" TEXT,
+    "tanggal" DATE NOT NULL,
     "sesi" "Sesi" NOT NULL,
     "jamMulai" TEXT,
     "mingguKe" TEXT,

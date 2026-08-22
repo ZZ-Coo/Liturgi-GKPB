@@ -5,7 +5,7 @@ import { fetchTenantBySlug, buildRootUrl } from '@/lib/tenant'
 import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
 import { liturgicalTint } from '@/lib/liturgicalColor'
-import { Church, Sun, Moon, CalendarDays, BookOpenText, Loader2, ChevronLeft } from 'lucide-vue-next'
+import { Church, Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft } from 'lucide-vue-next'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -16,8 +16,14 @@ const DocxViewer = defineAsyncComponent(() => import('@/components/DocxViewer.vu
 const route = useRoute()
 const liturgi = useLiturgiStore()
 
-type Sesi = 'PAGI' | 'SORE'
+type Sesi = 'PAGI' | 'SIANG' | 'SORE'
+const SESI_OPTIONS: { value: Sesi; label: string; icon: typeof Sunrise }[] = [
+  { value: 'PAGI', label: 'Pagi', icon: Sunrise },
+  { value: 'SIANG', label: 'Siang', icon: Sun },
+  { value: 'SORE', label: 'Sore', icon: Sunset },
+]
 const sesi = ref<Sesi>('PAGI')
+const sesiIndex = computed(() => SESI_OPTIONS.findIndex((o) => o.value === sesi.value))
 const jemaatId = ref<string | null>(null)
 const jemaatName = ref<string | null>(null)
 const jemaatCategory = ref<string | null>(null)
@@ -61,7 +67,16 @@ onMounted(async () => {
   jemaatCategory.value = jemaat.category
 
   await load()
-  if (!liturgi.current) await switchSesi('SORE')
+  // Pagi is the default first try; if that session has nothing published,
+  // fall through Siang then Sore instead of leaving the page looking empty
+  // just because the wrong tab happened to be selected first.
+  if (!liturgi.current) {
+    for (const opt of SESI_OPTIONS) {
+      if (opt.value === sesi.value) continue
+      await switchSesi(opt.value)
+      if (liturgi.current) break
+    }
+  }
 })
 </script>
 
@@ -103,25 +118,21 @@ onMounted(async () => {
 
           <div class="h-px w-16 bg-line" />
 
-          <!-- session toggle: sliding pill with icons for quick, non-text recognition -->
+          <!-- session toggle: sliding pill, generalized to N options so
+               adding Siang later didn't need a rewrite -->
           <div class="relative inline-flex rounded-full border border-line bg-paper p-1">
             <div
-              class="absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
-              :class="sesi === 'SORE' ? 'translate-x-[calc(100%+0.5rem)]' : 'translate-x-0'"
+              class="absolute inset-y-1 left-1 rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
+              :style="{ width: `calc((100% - 0.5rem) / ${SESI_OPTIONS.length})`, transform: `translateX(${sesiIndex * 100}%)` }"
             />
             <button
-              class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
-              :class="sesi === 'PAGI' ? 'text-white' : 'text-muted hover:text-ink'"
-              @click="switchSesi('PAGI')"
+              v-for="opt in SESI_OPTIONS"
+              :key="opt.value"
+              class="relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+              :class="sesi === opt.value ? 'text-white' : 'text-muted hover:text-ink'"
+              @click="switchSesi(opt.value)"
             >
-              <Sun class="h-4 w-4" /> Pagi
-            </button>
-            <button
-              class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
-              :class="sesi === 'SORE' ? 'text-white' : 'text-muted hover:text-ink'"
-              @click="switchSesi('SORE')"
-            >
-              <Moon class="h-4 w-4" /> Sore
+              <component :is="opt.icon" class="h-4 w-4" /> {{ opt.label }}
             </button>
           </div>
 

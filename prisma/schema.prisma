@@ -39,6 +39,7 @@ model Pendeta {
 
 enum Sesi {
   PAGI
+  SIANG
   SORE
 }
 
@@ -56,7 +57,13 @@ model Liturgi {
   id           String        @id @default(dbgenerated("gen_random_uuid()"))
   jemaatId     String
   jemaat       Jemaat        @relation(fields: [jemaatId], references: [id], onDelete: Cascade)
-  tanggal      DateTime
+  tanggal      DateTime      @db.Date // plain calendar date — no time-of-day, no timezone.
+  // Was a bare `DateTime` (-> TIMESTAMP) before, which PostgREST returns as
+  // a full ISO datetime string like "2026-08-22T00:00:00". Every place that
+  // reads this column (the <input type="date">, the /:tanggal route param,
+  // .eq('tanggal', ...) filters) expects a plain "2026-08-22" — the
+  // mismatch made the edit form's date field render blank and the list's
+  // date formatting break ("Invalid Date").
   sesi         Sesi
   jamMulai     String? // display only, e.g. "07:30" — not fixed, schedules shift week to week
   mingguKe     String?
@@ -64,6 +71,12 @@ model Liturgi {
   warnaLiturgi String?
   pendetaId    String?
   pendeta      Pendeta?      @relation(fields: [pendetaId], references: [id])
+  // Free text, always the source of truth for display — pendetaId above is
+  // just an optional soft link (set when the name happens to match a known
+  // Pendeta record) that doesn't gate saving. See scan-cover.ts matchPendeta:
+  // locking "Dilayani Oleh" to only the ~35 synod-seeded names would block
+  // recording local/guest pendeta who simply aren't in that list yet.
+  pendetaNama  String?
   status       LiturgiStatus @default(DRAFT)
 
   fileUrl          String // public URL in the liturgi-files bucket

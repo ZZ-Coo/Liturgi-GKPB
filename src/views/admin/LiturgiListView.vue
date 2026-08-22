@@ -5,12 +5,12 @@ import { supabase } from '@/lib/supabase'
 import { fetchAllJemaat } from '@/lib/tenant'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import AdminShell from '@/components/admin/AdminShell.vue'
-import { Plus, ChevronDown, FileText, FileType2, Sun, Moon, CheckCircle2, Circle, Trash2, Search } from 'lucide-vue-next'
+import { Plus, ChevronDown, FileText, FileType2, Sunrise, Sun, Sunset, CheckCircle2, Circle, Trash2, Search } from 'lucide-vue-next'
 
 interface Row {
   id: string
   tanggal: string
-  sesi: 'PAGI' | 'SORE'
+  sesi: 'PAGI' | 'SIANG' | 'SORE'
   mingguKe: string | null
   warnaLiturgi: string | null
   status: 'DRAFT' | 'PUBLISHED'
@@ -39,8 +39,15 @@ const visibleRows = computed(() => {
   return rows.value.filter((r) => r.jemaat?.name.toLowerCase().includes(q))
 })
 
+const SESI_ICON = { PAGI: Sunrise, SIANG: Sun, SORE: Sunset } as const
+const SESI_LABEL = { PAGI: 'Pagi', SIANG: 'Siang', SORE: 'Sore' } as const
+
 function formatTanggal(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', {
+  // Defensive: handles a plain "2026-08-22" (the normal case now that the
+  // column is DATE) as well as a stray full timestamp, so this never
+  // silently regresses back into "Invalid Date" if the column type changes.
+  const datePart = iso.includes('T') ? iso.slice(0, 10) : iso
+  return new Date(datePart + 'T00:00:00').toLocaleDateString('id-ID', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -167,8 +174,8 @@ async function togglePublish(row: Row) {
               <p class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted">
                 <span>{{ formatTanggal(row.tanggal) }}</span>
                 <span class="inline-flex items-center gap-0.5">
-                  <component :is="row.sesi === 'PAGI' ? Sun : Moon" class="h-3 w-3" />
-                  {{ row.sesi === 'PAGI' ? 'Pagi' : 'Sore' }}
+                  <component :is="SESI_ICON[row.sesi]" class="h-3 w-3" />
+                  {{ SESI_LABEL[row.sesi] }}
                 </span>
                 <span v-if="row.jemaat?.category">· {{ row.jemaat.category }}</span>
               </p>
