@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { Church, LogOut } from 'lucide-vue-next'
@@ -10,6 +11,19 @@ async function logout() {
   await auth.logout()
   router.push({ name: 'admin-login' })
 }
+
+// authStore now stays live-synced with the real Supabase session (see
+// authStore.ts). Catches token expiry or a logout from another tab while
+// this tab is just sitting on an admin page — otherwise the admin would
+// only find out something's wrong the next time a save/delete fails.
+watch(
+  () => auth.isAuthenticated,
+  (authed) => {
+    if (!authed && router.currentRoute.value.name !== 'admin-login') {
+      router.push({ name: 'admin-login' })
+    }
+  }
+)
 </script>
 
 <template>

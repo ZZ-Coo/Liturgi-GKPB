@@ -6,8 +6,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
+import { extractStoragePath } from '@/lib/storage'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
-import { scanPdfCover, matchPendeta } from '@/lib/scan-cover'
+import { scanPdfCover, matchPendeta, matchJemaat } from '@/lib/scan-cover'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   CalendarDays,
@@ -162,6 +163,18 @@ async function detectFromFile() {
     const scanned = await scanPdfCover(file.value)
     const filled: string[] = []
 
+    // Jemaat is locked in edit mode (it's part of the slot's identity),
+    // so only auto-select it while creating a new upload.
+    if (!isEdit.value && scanned.jemaatName) {
+      const matchedJemaatId = matchJemaat(scanned.jemaatName, jemaatList.value)
+      if (matchedJemaatId) {
+        jemaatId.value = matchedJemaatId
+        filled.push('jemaat')
+      } else {
+        scanNote.value = `Terdeteksi jemaat "${scanned.jemaatName}" tapi gak cocok dengan daftar — cek dropdown jemaat manual.`
+      }
+    }
+
     if (scanned.tanggal) { tanggal.value = scanned.tanggal; filled.push('tanggal') }
     if (scanned.jamMulai) { jamMulai.value = scanned.jamMulai; filled.push('jam') }
     if (scanned.mingguKe) { mingguKe.value = scanned.mingguKe; filled.push('minggu ke') }
@@ -265,8 +278,20 @@ async function submit() {
       fileType = isPdf ? 'PDF' : 'DOCX'
       const ext = isPdf ? 'pdf' : 'docx'
       // Deterministic path — re-uploading for the same jemaat/tanggal/sesi
-      // naturally replaces the old file instead of piling up orphans.
+      // naturally replaces the old file instead of piling up orphans...
+      // but only when the extension matches. If this edit changes the
+      // file type (PDF -> DOCX or vice versa), the path itself changes,
+      // so the old file at the old path is never touched by `upsert` and
+      // would otherwise sit there forever. Delete it explicitly whenever
+      // we're about to write to a genuinely different path.
       const path = `${jemaatSlug(jemaatId.value)}/${tanggal.value}-${sesi.value.toLowerCase()}.${ext}`
+
+      if (isEdit.value && currentFileUrl.value) {
+        const oldPath = extractStoragePath(currentFileUrl.value)
+        if (oldPath && oldPath !== path) {
+          await supabase.storage.from('liturgi-files').remove([oldPath])
+        }
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('liturgi-files')
@@ -316,7 +341,17 @@ async function remove() {
   if (!editId) return
   if (!confirm('Hapus liturgi ini?')) return
   const { error: deleteError } = await supabase.from('liturgi').delete().eq('id', editId)
-  if (!deleteError) router.push('/')
+  if (deleteError) return
+
+  // The DB row is gone, but the file it pointed to isn't cleaned up by
+  // that on its own — remove it from storage too, or it sits there
+  // orphaned forever.
+  if (currentFileUrl.value) {
+    const path = extractStoragePath(currentFileUrl.value)
+    if (path) await supabase.storage.from('liturgi-files').remove([path])
+  }
+
+  router.push('/')
 }
 </script>
 

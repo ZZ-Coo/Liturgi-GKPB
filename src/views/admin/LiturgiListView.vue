@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '@/lib/supabase'
+import { extractStoragePath } from '@/lib/storage'
 import { fetchAllJemaat } from '@/lib/tenant'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import AdminShell from '@/components/admin/AdminShell.vue'
@@ -15,6 +16,7 @@ interface Row {
   warnaLiturgi: string | null
   status: 'DRAFT' | 'PUBLISHED'
   fileType: 'PDF' | 'DOCX'
+  fileUrl: string
   jemaat: { name: string; category: string | null } | null
 }
 
@@ -69,7 +71,7 @@ async function load(reset: boolean) {
     .from('liturgi')
     // !inner so filtering on jemaat.category actually narrows the rows
     // (a plain embed would still return every liturgi row).
-    .select('id, tanggal, sesi, mingguKe, warnaLiturgi, status, fileType, jemaat:jemaatId!inner(name, category)', {
+    .select('id, tanggal, sesi, mingguKe, warnaLiturgi, status, fileType, fileUrl, jemaat:jemaatId!inner(name, category)', {
       count: 'exact',
     })
     .order('tanggal', { ascending: false })
@@ -99,6 +101,9 @@ async function remove(row: Row) {
   if (!confirm(`Hapus liturgi ${row.jemaat?.name ?? ''} — ${row.tanggal}?`)) return
   const { error } = await supabase.from('liturgi').delete().eq('id', row.id)
   if (!error) {
+    const path = extractStoragePath(row.fileUrl)
+    if (path) await supabase.storage.from('liturgi-files').remove([path])
+
     rows.value = rows.value.filter((r) => r.id !== row.id)
     total.value = Math.max(0, total.value - 1)
   }
