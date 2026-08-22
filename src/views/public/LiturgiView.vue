@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchTenantBySlug } from '@/lib/tenant'
+import { fetchTenantBySlug, buildRootUrl } from '@/lib/tenant'
 import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
-import { Sun, Moon, CalendarDays, BookOpenText, Loader2, MapPinOff, CircleAlert, CalendarX } from 'lucide-vue-next'
+import { liturgicalTint } from '@/lib/liturgicalColor'
+import { Church, Sun, Moon, CalendarDays, BookOpenText, Loader2, ChevronLeft } from 'lucide-vue-next'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -19,6 +20,7 @@ type Sesi = 'PAGI' | 'SORE'
 const sesi = ref<Sesi>('PAGI')
 const jemaatId = ref<string | null>(null)
 const jemaatName = ref<string | null>(null)
+const jemaatCategory = ref<string | null>(null)
 const tanggal = ref<string>((route.params.tanggal as string) ?? new Date().toISOString().slice(0, 10))
 const tenantLoading = ref(true)
 
@@ -28,6 +30,11 @@ const tanggalLabel = new Date(tanggal.value + 'T00:00:00').toLocaleDateString('i
   month: 'long',
   year: 'numeric',
 })
+
+// Ties the page's accent to the actual liturgical colour of the day
+// (as entered by the admin), so each week reads distinctly instead of
+// every service looking like a copy of the last.
+const tint = computed(() => liturgicalTint(liturgi.current?.warnaLiturgi))
 
 async function load() {
   if (!jemaatId.value) return
@@ -51,6 +58,7 @@ onMounted(async () => {
   if (!jemaat) return
   jemaatId.value = jemaat.id
   jemaatName.value = jemaat.name
+  jemaatCategory.value = jemaat.category
 
   await load()
   if (!liturgi.current) await switchSesi('SORE')
@@ -58,57 +66,81 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,theme(colors.paper)_55%)]">
-    <!-- thin decorative bar echoing the church's colours -->
-    <div class="h-1.5 w-full bg-gradient-to-r from-accent via-accent-hover to-accent" />
+  <div class="relative min-h-screen bg-paper">
+    <!-- thin decorative bar — takes the day's liturgical colour once known,
+         falls back to the church-green accent before/without one -->
+    <div
+      class="h-1.5 w-full transition-colors duration-300"
+      :class="tint ? tint.dot : 'bg-gradient-to-r from-accent via-accent-hover to-accent'"
+    />
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,transparent_65%)]"
+    />
 
-    <div class="mx-auto max-w-5xl px-3 py-6 sm:px-4 sm:py-8 lg:grid lg:grid-cols-[280px_1fr] lg:items-start lg:gap-8">
-      <!-- letterhead-style header — sticky on desktop, with a vertical rule
-           on its right so the two columns read like a printed bulletin -->
-      <div
-        class="flex flex-col items-center gap-3 text-center lg:sticky lg:top-8 lg:items-center lg:border-r lg:border-line lg:pr-8"
-      >
-        <div class="space-y-0.5">
-          <p v-if="jemaatName" class="font-display text-lg font-semibold leading-tight text-ink">{{ jemaatName }}</p>
-          <p class="flex items-center justify-center gap-1.5 text-xs text-muted">
-            <CalendarDays class="h-3.5 w-3.5" />
-            {{ tanggalLabel }}
-          </p>
-        </div>
-
-        <!-- session toggle: sliding pill with icons for quick, non-text recognition -->
-        <div class="relative inline-flex rounded-full border border-line bg-white p-1 shadow-sm">
-          <div
-            class="absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-accent transition-transform duration-200 ease-out"
-            :class="sesi === 'SORE' ? 'translate-x-[calc(100%+0.5rem)]' : 'translate-x-0'"
-          />
-          <button
-            class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
-            :class="sesi === 'PAGI' ? 'text-white' : 'text-muted hover:text-ink'"
-            @click="switchSesi('PAGI')"
-          >
-            <Sun class="h-4 w-4" /> Pagi
-          </button>
-          <button
-            class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
-            :class="sesi === 'SORE' ? 'text-white' : 'text-muted hover:text-ink'"
-            @click="switchSesi('SORE')"
-          >
-            <Moon class="h-4 w-4" /> Sore
-          </button>
-        </div>
-
-        <!-- tema card also lives in the left column on desktop — it's about
-             the service, same as the header above it, not the file viewer -->
-        <div
-          v-if="liturgi.current?.tema"
-          class="hidden w-full items-start gap-3 rounded-xl border border-line border-l-4 border-l-accent bg-white px-4 py-3 text-left shadow-sm lg:mt-2 lg:flex"
-        >
-          <BookOpenText class="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-          <div>
-            <p v-if="liturgi.current.mingguKe" class="label-eyebrow">{{ liturgi.current.mingguKe }}</p>
-            <h2 class="font-display text-base font-semibold leading-snug text-ink">{{ liturgi.current.tema }}</h2>
+    <div class="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-10 xl:max-w-7xl xl:gap-14">
+      <!-- left column: back-link + letterhead card wrapped together as ONE
+           grid child, matching the 2 explicit columns above — 3 loose
+           children in a 2-column grid silently mis-places the third
+           (that was the "desktop layout looks broken/tiny" bug). -->
+      <div class="lg:sticky lg:top-8 lg:self-start">
+        <!-- letterhead card — everything about the SERVICE (who, when, which
+             session, what colour) lives in one solid card instead of loose
+             elements floating on the gradient, so the header reads as a
+             deliberate "cover page" even before any liturgi has loaded. -->
+        <div class="flex flex-col items-center gap-4 rounded-2xl border border-line bg-white px-5 py-6 text-center shadow-card sm:px-6">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-paper shadow-soft">
+            <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
           </div>
+
+          <div class="space-y-1.5">
+            <p v-if="jemaatCategory" class="label-eyebrow text-accent">{{ jemaatCategory }}</p>
+            <p v-if="jemaatName" class="font-display text-xl font-semibold leading-tight text-ink">{{ jemaatName }}</p>
+            <p class="flex items-center justify-center gap-1.5 text-xs text-muted">
+              <CalendarDays class="h-3.5 w-3.5" />
+              {{ tanggalLabel }}
+            </p>
+          </div>
+
+          <div class="h-px w-16 bg-line" />
+
+          <!-- session toggle: sliding pill with icons for quick, non-text recognition -->
+          <div class="relative inline-flex rounded-full border border-line bg-paper p-1">
+            <div
+              class="absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
+              :class="sesi === 'SORE' ? 'translate-x-[calc(100%+0.5rem)]' : 'translate-x-0'"
+            />
+            <button
+              class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
+              :class="sesi === 'PAGI' ? 'text-white' : 'text-muted hover:text-ink'"
+              @click="switchSesi('PAGI')"
+            >
+              <Sun class="h-4 w-4" /> Pagi
+            </button>
+            <button
+              class="relative z-10 flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium transition-colors"
+              :class="sesi === 'SORE' ? 'text-white' : 'text-muted hover:text-ink'"
+              @click="switchSesi('SORE')"
+            >
+              <Moon class="h-4 w-4" /> Sore
+            </button>
+          </div>
+
+          <!-- tema lives inside the same letterhead card on desktop, under
+               a divider, instead of a second separate card below it -->
+          <template v-if="liturgi.current?.tema">
+            <div class="h-px w-16 bg-line" />
+            <div class="hidden w-full items-start gap-3 rounded-xl px-1 text-left lg:flex" :class="tint ? tint.soft : 'bg-accent-soft'">
+              <div class="w-full rounded-xl px-3 py-3">
+                <BookOpenText class="mb-1.5 h-4 w-4" :class="tint ? tint.text : 'text-accent'" />
+                <p v-if="liturgi.current.mingguKe" class="label-eyebrow" :class="tint ? tint.text : 'text-accent'">{{ liturgi.current.mingguKe }}</p>
+                <h2 class="font-display text-base font-semibold leading-snug text-ink">{{ liturgi.current.tema }}</h2>
+                <span v-if="tint" class="chip mt-2 bg-white/70" :class="tint.text">
+                  <span class="h-1.5 w-1.5 rounded-full" :class="tint.dot" />
+                  Warna Liturgi: {{ tint.label }}
+                </span>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -117,31 +149,38 @@ onMounted(async () => {
            where this stacks below the header instead of beside it. -->
       <div class="mt-5 space-y-5 lg:mt-0">
         <!-- tenant not resolved (bad link / not on a jemaat subdomain) -->
-        <div v-if="!tenantLoading && tenant.kind !== 'tenant'" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
-          <MapPinOff class="h-6 w-6 text-muted" stroke-width="1.5" />
-          <p class="text-sm text-muted">Tautan ini tidak mengarah ke jemaat manapun. Periksa kembali alamat yang Anda buka.</p>
-        </div>
-        <div v-else-if="!tenantLoading && tenant.kind === 'tenant' && !jemaatId" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
-          <MapPinOff class="h-6 w-6 text-muted" stroke-width="1.5" />
-          <p class="text-sm text-muted">Jemaat tidak ditemukan. Periksa kembali tautan yang Anda buka.</p>
-        </div>
+        <p v-if="!tenantLoading && tenant.kind !== 'tenant'" class="text-center text-sm text-muted">
+          Tautan ini tidak mengarah ke jemaat manapun. Periksa kembali alamat yang Anda buka.
+        </p>
+        <p v-else-if="!tenantLoading && tenant.kind === 'tenant' && !jemaatId" class="text-center text-sm text-muted">
+          Jemaat tidak ditemukan. Periksa kembali tautan yang Anda buka.
+        </p>
 
-        <div v-else-if="tenantLoading || liturgi.loading" class="flex flex-col items-center gap-2 py-10 text-sm text-muted">
+        <div v-else-if="tenantLoading || liturgi.loading" class="flex flex-col items-center gap-2 py-14 text-sm text-muted">
           <Loader2 class="h-5 w-5 animate-spin text-accent" />
           <p>Memuat…</p>
         </div>
-        <div v-else-if="liturgi.error" class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center">
-          <CircleAlert class="h-6 w-6 text-danger" stroke-width="1.5" />
-          <p class="text-sm text-danger">{{ liturgi.error }}</p>
-        </div>
+        <p v-else-if="liturgi.error" class="text-center text-sm text-danger">{{ liturgi.error }}</p>
 
         <template v-else-if="liturgi.current">
-          <!-- shown on mobile only — desktop shows the copy in the left column instead -->
-          <div v-if="liturgi.current.tema" class="mx-auto flex max-w-lg items-start gap-3 rounded-xl border border-line border-l-4 border-l-accent bg-white px-4 py-3 shadow-sm lg:hidden">
-            <BookOpenText class="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <!-- shown on mobile only — desktop shows the copy inside the letterhead card instead -->
+          <div
+            v-if="liturgi.current.tema"
+            class="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-line bg-white px-4 py-3.5 shadow-card lg:hidden"
+            :class="tint ? ['border-l-4', tint.border] : 'border-l-4 border-l-accent'"
+          >
+            <BookOpenText class="mt-0.5 h-4 w-4 shrink-0" :class="tint ? tint.text : 'text-accent'" />
             <div class="text-left">
               <p v-if="liturgi.current.mingguKe" class="label-eyebrow">{{ liturgi.current.mingguKe }}</p>
               <h2 class="font-display text-base font-semibold leading-snug text-ink">{{ liturgi.current.tema }}</h2>
+              <span
+                v-if="tint"
+                class="chip mt-1.5"
+                :class="[tint.soft, tint.text]"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="tint.dot" />
+                Warna Liturgi: {{ tint.label }}
+              </span>
             </div>
           </div>
 
@@ -164,10 +203,7 @@ onMounted(async () => {
           />
         </template>
 
-        <p v-else class="card mx-auto flex max-w-sm flex-col items-center gap-2 py-10 text-center text-sm text-muted">
-          <CalendarX class="h-6 w-6 text-muted" stroke-width="1.5" />
-          Belum ada liturgi untuk sesi ini.
-        </p>
+        <p v-else class="text-center text-sm text-muted">Belum ada liturgi untuk sesi ini.</p>
       </div>
     </div>
   </div>

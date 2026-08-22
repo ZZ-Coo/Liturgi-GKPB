@@ -71,6 +71,22 @@ export function buildTenantUrl(slug: string): string {
   return `/j/${slug}`
 }
 
+// Link back to the "pilih jemaat" landing page from a tenant page — mirrors
+// buildTenantUrl's two modes (subdomain vs path) so the back-link works
+// the same way the forward link into a tenant does.
+export function buildRootUrl(): string {
+  const host = window.location.hostname.toLowerCase()
+  const isLocal = host === 'localhost' || host.endsWith('.localhost')
+  const rootDomain = isLocal ? 'localhost' : ROOT_DOMAIN
+  const canUseSubdomain = isLocal || host === rootDomain
+  const port = window.location.port ? `:${window.location.port}` : ''
+
+  if (canUseSubdomain) {
+    return `${window.location.protocol}//${rootDomain}${port}`
+  }
+  return '/'
+}
+
 export interface JemaatRecord {
   id: string
   slug: string

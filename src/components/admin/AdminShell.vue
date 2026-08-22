@@ -14,7 +14,7 @@ async function logout() {
 
 <template>
   <div class="min-h-screen bg-paper">
-    <header class="sticky top-0 z-10 border-b border-line bg-white/90 backdrop-blur">
+    <header class="sticky top-0 z-10 border-b border-line bg-white/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
         <div class="flex items-center gap-2.5">
           <div class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper">

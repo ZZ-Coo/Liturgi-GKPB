@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
-import { Church } from 'lucide-vue-next'
+import { Church, Mail, Lock } from 'lucide-vue-next'
 
 const email = ref('')
 const password = ref('')
@@ -27,25 +27,34 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,theme(colors.paper)_55%)] px-4">
-    <div class="w-full max-w-sm space-y-6">
+  <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-paper px-4">
+    <div
+      class="pointer-events-none absolute inset-x-0 -top-24 h-72 bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,transparent_65%)]"
+    />
+    <div class="relative w-full max-w-sm space-y-6">
       <div class="flex flex-col items-center gap-2 text-center">
-        <div class="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white shadow-sm">
-          <Church class="h-6 w-6 text-accent" stroke-width="1.75" />
+        <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-white shadow-lift">
+          <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
         </div>
         <div>
-          <p class="label-eyebrow">Admin</p>
-          <h1 class="font-display text-xl font-semibold text-ink">Liturgi GKPB</h1>
+          <p class="label-eyebrow text-accent">Admin</p>
+          <h1 class="font-display text-2xl font-semibold text-ink">Liturgi GKPB</h1>
         </div>
       </div>
 
-      <form class="card space-y-3 shadow-[0_2px_10px_-4px_rgba(30,38,32,0.15)]" @submit.prevent="submit">
-        <input v-model="email" type="email" placeholder="Email" class="input" autofocus />
-        <input v-model="password" type="password" placeholder="Kata sandi" class="input" />
+      <form class="card space-y-3" @submit.prevent="submit">
+        <div class="relative">
+          <Mail class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input v-model="email" type="email" placeholder="Email" class="input pl-10" autofocus />
+        </div>
+        <div class="relative">
+          <Lock class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input v-model="password" type="password" placeholder="Kata sandi" class="input pl-10" />
+        </div>
         <button type="submit" class="btn-primary w-full" :disabled="loading">
           {{ loading ? 'Memproses…' : 'Masuk' }}
         </button>
-        <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+        <p v-if="error" class="text-center text-sm text-danger">{{ error }}</p>
       </form>
     </div>
   </div>

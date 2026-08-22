@@ -19,6 +19,31 @@ const errorMessage = ref('')
 const html = ref('')
 const isFullscreen = ref(false)
 
+// Word docs often carry hard-coded colours (a black highlight banner, a
+// stray red font, etc.) that mammoth passes straight through as inline
+// styles — fine in Word, but it clashes hard with the app's own palette
+// once rendered here. Strip only colour-related properties and keep
+// everything structural (text-align, font-weight, spacing), so a
+// centered letterhead stays centered but no longer fights the design.
+const COLOR_PROPS = ['color', 'background', 'background-color', 'border-color']
+
+function neutralizeInlineColors(rawHtml: string): string {
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html')
+  doc.querySelectorAll<HTMLElement>('[style]').forEach((el) => {
+    const kept = el.style.cssText
+      .split(';')
+      .map((rule) => rule.trim())
+      .filter(Boolean)
+      .filter((rule) => !COLOR_PROPS.some((prop) => rule.toLowerCase().startsWith(prop)))
+    if (kept.length) {
+      el.setAttribute('style', kept.join('; '))
+    } else {
+      el.removeAttribute('style')
+    }
+  })
+  return doc.body.innerHTML
+}
+
 async function load() {
   status.value = 'loading'
   errorMessage.value = ''
@@ -28,7 +53,7 @@ async function load() {
     if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
     const arrayBuffer = await res.arrayBuffer()
     const result = await mammoth.convertToHtml({ arrayBuffer })
-    html.value = result.value
+    html.value = neutralizeInlineColors(result.value)
     status.value = 'ready'
   } catch (err) {
     console.error('DocxViewer failed to load docx:', err)
@@ -59,7 +84,7 @@ watch(() => props.url, load)
 <template>
   <div
     ref="containerEl"
-    class="relative flex flex-col overflow-hidden rounded-lg border border-line bg-paper"
+    class="relative flex flex-col overflow-hidden rounded-2xl border border-line bg-paper shadow-card"
     :class="isFullscreen ? 'h-screen' : 'min-h-[50vh]'"
   >
     <!-- static toolbar (desktop only), same treatment as PdfViewer: sits at
@@ -99,7 +124,7 @@ watch(() => props.url, load)
            user-supplied at render time, so this is safe to render directly -->
       <div
         v-else
-        class="docx-content mx-auto max-w-2xl rounded-lg border border-line bg-white px-5 py-6 shadow-[0_2px_10px_-4px_rgba(30,38,32,0.15)] sm:px-8 sm:py-8"
+        class="docx-content mx-auto max-w-2xl rounded-xl border border-line bg-white px-5 py-6 shadow-[0_2px_10px_-4px_rgba(27,33,25,0.15)] sm:px-8 sm:py-8"
         v-html="html"
       />
     </div>
@@ -110,7 +135,7 @@ watch(() => props.url, load)
       class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
-        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-[0_8px_24px_-8px_rgba(30,38,32,0.25)] backdrop-blur"
+        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-lift backdrop-blur"
       >
         <button
           type="button"
@@ -139,10 +164,10 @@ watch(() => props.url, load)
 /* mammoth's output is unstyled semantic HTML — give it readable defaults
    without dragging in @tailwindcss/typography just for this one view */
 .docx-content :deep(h1) {
-  @apply mb-3 font-display text-xl font-semibold text-ink;
+  @apply mb-3 text-center font-display text-xl font-semibold leading-snug text-ink;
 }
 .docx-content :deep(h2) {
-  @apply mb-2 mt-4 font-display text-lg font-semibold text-ink;
+  @apply mb-2 mt-4 text-center font-display text-lg font-semibold leading-snug text-ink;
 }
 .docx-content :deep(h3) {
   @apply mb-2 mt-3 font-display text-base font-semibold text-ink;
@@ -171,9 +196,23 @@ watch(() => props.url, load)
   @apply font-semibold;
 }
 .docx-content :deep(a) {
-  @apply text-accent underline;
+  @apply text-accent underline underline-offset-2;
 }
 .docx-content :deep(img) {
   @apply mx-auto my-3 max-w-full rounded;
 }
+.docx-content :deep(hr) {
+  @apply my-5 border-line;
+}
+/* Word's "highlight" formatting (often a loud black/yellow banner in the
+   original file) — restyled as a soft accent badge instead of whatever
+   raw colour the author picked, so it reads as emphasis, not a shout. */
+.docx-content :deep(mark) {
+  @apply rounded bg-accent-soft px-1 py-0.5 text-inherit;
+  background-color: theme('colors.accent.soft') !important;
+}
+.docx-content :deep(u) {
+  @apply underline decoration-accent-line underline-offset-2;
+}
+
 </style>

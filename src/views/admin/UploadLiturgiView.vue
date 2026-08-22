@@ -8,6 +8,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import AdminShell from '@/components/admin/AdminShell.vue'
+import {
+  CalendarDays,
+  BookOpenText,
+  UploadCloud,
+  Radio,
+  ChevronDown,
+  AlertTriangle,
+  FileCheck2,
+  Trash2,
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +51,8 @@ const currentFilename = ref<string | null>(null)
 const file = ref<File | null>(null)
 const saving = ref(false)
 const error = ref<string | null>(null)
+
+const WARNA_OPTIONS = ['Hijau', 'Putih', 'Ungu', 'Merah', 'Hitam'] as const
 
 async function checkSlot() {
   existingSlot.value = null
@@ -198,88 +210,168 @@ async function remove() {
 
 <template>
   <AdminShell>
-    <div class="mx-auto max-w-md space-y-6">
+    <div class="mx-auto max-w-lg space-y-6">
       <div>
-        <p class="label-eyebrow">Admin</p>
+        <p class="label-eyebrow text-accent">Admin</p>
         <h1 class="font-display text-2xl font-semibold text-ink">{{ isEdit ? 'Edit Liturgi' : 'Upload Liturgi' }}</h1>
-      </div>
-
-      <form class="card space-y-3" @submit.prevent="submit">
-      <div>
-        <label class="label-eyebrow mb-1 block">Jemaat</label>
-        <select v-model="jemaatId" class="input" :disabled="isEdit">
-          <option v-for="j in jemaatList" :key="j.id" :value="j.id">{{ j.name }}</option>
-        </select>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="label-eyebrow mb-1 block">Tanggal</label>
-          <input v-model="tanggal" type="date" class="input" :disabled="isEdit" />
-        </div>
-        <div>
-          <label class="label-eyebrow mb-1 block">Sesi</label>
-          <select v-model="sesi" class="input" :disabled="isEdit">
-            <option value="PAGI">Pagi</option>
-            <option value="SORE">Sore</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- create-mode only: warns before the identity fields lock in, so a
-           forgotten date/sesi doesn't quietly overwrite an existing file -->
-      <p v-if="!isEdit && checkingSlot" class="text-xs text-muted">Mengecek slot…</p>
-      <div
-        v-else-if="!isEdit && existingSlot"
-        class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-      >
-        Slot ini udah ada liturgi: <strong>{{ existingSlot.originalFilename }}</strong>
-        ({{ existingSlot.status === 'PUBLISHED' ? 'Terbit' : 'Draf' }}). Simpan di sini akan menimpanya.
-      </div>
-
-      <div>
-        <label class="label-eyebrow mb-1 block">Minggu ke (opsional)</label>
-        <input v-model="mingguKe" type="text" class="input" placeholder="Minggu X Sesudah Trinitatis" />
-      </div>
-      <div>
-        <label class="label-eyebrow mb-1 block">Tema (opsional)</label>
-        <input v-model="tema" type="text" class="input" />
-      </div>
-      <div>
-        <label class="label-eyebrow mb-1 block">Warna Liturgi (opsional)</label>
-        <input v-model="warnaLiturgi" type="text" class="input" placeholder="Hijau / Putih / Ungu / Merah" />
-      </div>
-
-      <div>
-        <label class="label-eyebrow mb-1 block">
-          {{ isEdit ? 'Ganti file (opsional)' : 'File (PDF atau Word)' }}
-        </label>
-        <p v-if="isEdit && currentFilename" class="mb-1 text-xs text-muted">
-          File saat ini: {{ currentFilename }}
+        <p class="mt-0.5 text-sm text-muted">
+          {{ isEdit ? 'Perbarui detail atau berkas liturgi ini.' : 'Tetapkan jadwal, lalu unggah berkas tata ibadah.' }}
         </p>
-        <input
-          type="file"
-          accept=".pdf,.docx"
-          class="input file:mr-3 file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-accent"
-          @change="onFileChange"
-        />
       </div>
 
-      <div>
-        <label class="label-eyebrow mb-1 block">Status</label>
-        <select v-model="status" class="input">
-          <option value="DRAFT">Draf</option>
-          <option value="PUBLISHED">Terbit</option>
-        </select>
-      </div>
+      <form class="space-y-4" @submit.prevent="submit">
+        <!-- section 1: jadwal — jemaat + tanggal + sesi, the identity of the slot -->
+        <div class="field-group">
+          <p class="field-group-heading">
+            <CalendarDays class="h-4 w-4 text-accent" /> Jadwal
+          </p>
 
-      <div class="flex gap-2 pt-1">
-        <button type="submit" class="btn-primary flex-1" :disabled="saving">
-          {{ saving ? 'Menyimpan…' : 'Simpan' }}
-        </button>
-        <button v-if="isEdit" type="button" class="btn-danger" @click="remove">Hapus</button>
+          <div>
+            <label class="label-eyebrow mb-1 block">Jemaat</label>
+            <div class="relative">
+              <select v-model="jemaatId" class="input appearance-none pr-8" :disabled="isEdit">
+                <option v-for="j in jemaatList" :key="j.id" :value="j.id">{{ j.name }}</option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label-eyebrow mb-1 block">Tanggal</label>
+              <input v-model="tanggal" type="date" class="input" :disabled="isEdit" />
+            </div>
+            <div>
+              <label class="label-eyebrow mb-1 block">Sesi</label>
+              <div class="relative">
+                <select v-model="sesi" class="input appearance-none pr-8" :disabled="isEdit">
+                  <option value="PAGI">Pagi</option>
+                  <option value="SORE">Sore</option>
+                </select>
+                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+              </div>
+            </div>
+          </div>
+
+          <!-- create-mode only: warns before the identity fields lock in, so a
+               forgotten date/sesi doesn't quietly overwrite an existing file -->
+          <p v-if="!isEdit && checkingSlot" class="text-xs text-muted">Mengecek slot…</p>
+          <div
+            v-else-if="!isEdit && existingSlot"
+            class="flex items-start gap-2 rounded-lg border border-gold/40 bg-gold-soft px-3 py-2.5 text-xs text-ink/80"
+          >
+            <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" />
+            <span>
+              Slot ini udah ada liturgi: <strong>{{ existingSlot.originalFilename }}</strong>
+              ({{ existingSlot.status === 'PUBLISHED' ? 'Terbit' : 'Draf' }}). Simpan di sini akan menimpanya.
+            </span>
+          </div>
         </div>
+
+        <!-- section 2: detail ibadah — the descriptive metadata, incl. the liturgical colour -->
+        <div class="field-group">
+          <p class="field-group-heading">
+            <BookOpenText class="h-4 w-4 text-accent" /> Detail Ibadah
+            <span class="ml-auto text-xs font-normal text-muted">Opsional</span>
+          </p>
+
+          <div>
+            <label class="label-eyebrow mb-1 block">Minggu ke</label>
+            <input v-model="mingguKe" type="text" class="input" placeholder="Minggu X Sesudah Trinitatis" />
+          </div>
+          <div>
+            <label class="label-eyebrow mb-1 block">Tema</label>
+            <input v-model="tema" type="text" class="input" placeholder="Tema khotbah minggu ini" />
+          </div>
+          <div>
+            <label class="label-eyebrow mb-1 block">Warna Liturgi</label>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="w in WARNA_OPTIONS"
+                :key="w"
+                type="button"
+                class="chip border px-3 py-1.5 text-sm transition-colors"
+                :class="
+                  warnaLiturgi === w
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:border-accent-line hover:text-ink'
+                "
+                @click="warnaLiturgi = warnaLiturgi === w ? '' : w"
+              >
+                {{ w }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- section 3: berkas -->
+        <div class="field-group">
+          <p class="field-group-heading">
+            <UploadCloud class="h-4 w-4 text-accent" /> Berkas
+          </p>
+
+          <div v-if="isEdit && currentFilename" class="flex items-center gap-2 rounded-lg border border-line bg-paper-deep/50 px-3 py-2 text-xs text-muted">
+            <FileCheck2 class="h-3.5 w-3.5 shrink-0 text-accent" />
+            File saat ini: <span class="font-medium text-ink">{{ currentFilename }}</span>
+          </div>
+
+          <div>
+            <label class="label-eyebrow mb-1 block">
+              {{ isEdit ? 'Ganti file (opsional)' : 'File PDF atau Word' }}
+            </label>
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              class="input cursor-pointer file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-accent"
+              @change="onFileChange"
+            />
+          </div>
+        </div>
+
+        <!-- section 4: publikasi -->
+        <div class="field-group">
+          <p class="field-group-heading">
+            <Radio class="h-4 w-4 text-accent" /> Publikasi
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="chip flex-1 justify-center border px-3 py-2 text-sm font-medium transition-colors"
+              :class="
+                status === 'DRAFT'
+                  ? 'border-line bg-paper-deep text-ink'
+                  : 'border-line text-muted hover:text-ink'
+              "
+              @click="status = 'DRAFT'"
+            >
+              Draf
+            </button>
+            <button
+              type="button"
+              class="chip flex-1 justify-center border px-3 py-2 text-sm font-medium transition-colors"
+              :class="
+                status === 'PUBLISHED'
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-line text-muted hover:text-ink'
+              "
+              @click="status = 'PUBLISHED'"
+            >
+              Terbit
+            </button>
+          </div>
+          <p class="text-xs text-muted">Jemaat hanya bisa melihat liturgi yang berstatus "Terbit".</p>
+        </div>
+
         <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+
+        <div class="flex gap-2 pt-1">
+          <button type="submit" class="btn-primary flex-1" :disabled="saving">
+            {{ saving ? 'Menyimpan…' : 'Simpan' }}
+          </button>
+          <button v-if="isEdit" type="button" class="btn-danger gap-1.5" @click="remove">
+            <Trash2 class="h-4 w-4" /> Hapus
+          </button>
+        </div>
       </form>
     </div>
   </AdminShell>

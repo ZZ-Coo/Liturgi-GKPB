@@ -62,7 +62,7 @@ async function renderAllPages() {
     canvas.style.display = 'block'
 
     const pageBox = document.createElement('div')
-    pageBox.className = 'pdf-page mx-auto mb-4 overflow-hidden rounded-lg border border-line bg-white shadow-[0_2px_10px_-4px_rgba(30,38,32,0.15)]'
+    pageBox.className = 'pdf-page mx-auto mb-4 overflow-hidden rounded-xl border border-line bg-white shadow-[0_2px_10px_-4px_rgba(27,33,25,0.15)]'
     pageBox.dataset.pageNumber = String(pageNum)
     pageBox.appendChild(canvas)
     wrapper.appendChild(pageBox)
@@ -203,7 +203,7 @@ watch(
 <template>
   <div
     ref="containerEl"
-    class="relative flex flex-col overflow-hidden rounded-lg border border-line bg-paper"
+    class="relative flex flex-col overflow-hidden rounded-2xl border border-line bg-paper shadow-card"
     :class="isFullscreen ? 'h-screen' : 'h-[78vh]'"
   >
     <!-- static toolbar (desktop only): sits right at the top, in normal
@@ -279,7 +279,7 @@ watch(
       class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
-        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-[0_8px_24px_-8px_rgba(30,38,32,0.25)] backdrop-blur"
+        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-lift backdrop-blur"
       >
         <button
           type="button"

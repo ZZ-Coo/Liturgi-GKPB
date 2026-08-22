@@ -5,41 +5,58 @@
 @layer base {
   body {
     @apply bg-paper text-ink font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
   }
   h1, h2, h3 {
     @apply font-display;
+  }
+  ::selection {
+    @apply bg-accent-soft text-accent-hover;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line
-           bg-white px-3.5 py-2 text-sm font-medium text-ink transition-colors
-           hover:border-accent hover:text-accent disabled:cursor-not-allowed
-           disabled:opacity-50 disabled:hover:border-line disabled:hover:text-ink;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line
+           bg-white px-4 py-2 text-sm font-medium text-ink transition-all
+           hover:border-accent-line hover:text-accent active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100
+           disabled:hover:border-line disabled:hover:text-ink;
   }
   .btn-primary {
-    @apply btn border-accent bg-accent text-white hover:bg-accent-hover hover:text-white
-           disabled:hover:bg-accent;
+    @apply btn border-accent bg-accent text-white shadow-soft hover:bg-accent-hover
+           hover:border-accent-hover hover:text-white disabled:hover:bg-accent;
   }
   .btn-ghost {
-    @apply btn border-transparent bg-transparent px-2;
+    @apply btn border-transparent bg-transparent px-2.5 shadow-none;
   }
   .btn-danger {
-    @apply btn border-transparent text-danger hover:border-danger hover:text-danger;
+    @apply btn border-transparent text-danger hover:border-danger/40 hover:bg-danger/5 hover:text-danger;
   }
 
   .input {
-    @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink
-           placeholder:text-muted focus:border-accent focus:outline-none
-           focus:ring-1 focus:ring-accent disabled:bg-line/30 disabled:text-muted;
+    @apply w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-sm text-ink
+           placeholder:text-muted/70 transition-shadow focus:border-accent focus:outline-none
+           focus:ring-2 focus:ring-accent-soft disabled:bg-paper-deep/60 disabled:text-muted;
   }
 
   .card {
-    @apply rounded-lg border border-line bg-white p-4;
+    @apply rounded-2xl border border-line bg-white p-4 shadow-card;
+  }
+
+  .field-group {
+    @apply space-y-4 rounded-2xl border border-line bg-white p-4 shadow-card sm:p-5;
+  }
+
+  .field-group-heading {
+    @apply flex items-center gap-2 text-sm font-semibold text-ink;
   }
 
   .label-eyebrow {
-    @apply text-xs font-medium uppercase tracking-wide text-muted;
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
 }
