@@ -22,8 +22,20 @@ const rootRoutes = [
 const tenant = resolveTenant()
 const routes = tenant.kind === 'admin' ? adminRoutes : tenant.kind === 'tenant' ? publicRoutes : rootRoutes
 
+// Subdomain mode (or plain root/localhost) keeps routes at "/" like before.
+// Path mode (no wildcard domain yet, e.g. *.vercel.app) mounts the same
+// route set under a prefix instead — createWebHistory's `base` handles the
+// prefixing/stripping automatically, so adminRoutes/publicRoutes below
+// don't need any '/admin' or '/j/:slug' baked into their paths.
+const base =
+  tenant.kind === 'admin' && tenant.mode === 'path'
+    ? '/admin'
+    : tenant.kind === 'tenant' && tenant.mode === 'path'
+      ? `/j/${tenant.slug}`
+      : '/'
+
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(base),
   routes,
 })
 
