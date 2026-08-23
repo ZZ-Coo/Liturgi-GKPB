@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { extractStoragePath } from '@/lib/storage'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { scanFileCover, matchPendeta, matchJemaat } from '@/lib/scan-cover'
+import { useAuthStore } from '@/stores/authStore'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   CalendarDays,
@@ -25,8 +26,15 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const editId = route.params.id as string | undefined
 const isEdit = computed(() => !!editId)
+
+// A jemaat_admin can only ever act on their own jemaat — RLS already
+// enforces this at the database level (the real boundary), but locking
+// the picker here means they see a correct, pre-filled form instead of a
+// full dropdown that fails with a permission error only after they submit.
+const jemaatLocked = computed(() => auth.adminRole === 'jemaat_admin')
 
 // In create mode, warns if jemaat+tanggal+sesi already has a row — so a
 // forgotten date/sesi field doesn't silently overwrite someone else's
@@ -121,13 +129,25 @@ watch([jemaatId, tanggal, sesi], () => {
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
+  if (jemaatLocked.value && auth.adminJemaatId) {
+    // Narrow the dropdown's own option list down to just their jemaat —
+    // not only disable it — so there's nothing to see even via devtools
+    // that isn't already true: this admin genuinely can't touch any
+    // other congregation.
+    jemaatList.value = jemaatList.value.filter((j) => j.id === auth.adminJemaatId)
+  }
 
   // Pre-fill from the Overview page's "+" chips (?jemaatId=&tanggal=&sesi=)
   // — falls back to normal defaults for anything not passed, so opening
   // /upload directly still works exactly as before.
   const q = route.query
   if (!isEdit.value) {
-    if (typeof q.jemaatId === 'string' && jemaatList.value.some((j) => j.id === q.jemaatId)) {
+    if (jemaatLocked.value && auth.adminJemaatId) {
+      // Ignore ?jemaatId= entirely for a locked admin — even a
+      // deliberately crafted link to someone else's slot must not
+      // pre-select a jemaat this account can't write to.
+      jemaatId.value = auth.adminJemaatId
+    } else if (typeof q.jemaatId === 'string' && jemaatList.value.some((j) => j.id === q.jemaatId)) {
       jemaatId.value = q.jemaatId
     } else if (jemaatList.value.length && !jemaatId.value) {
       jemaatId.value = jemaatList.value[0].id
@@ -180,8 +200,10 @@ async function detectFromFile() {
     const filled: string[] = []
 
     // Jemaat is locked in edit mode (it's part of the slot's identity),
-    // so only auto-select it while creating a new upload.
-    if (!isEdit.value && scanned.jemaatName) {
+    // and also locked for a jemaat_admin (can only ever be their own
+    // jemaat) — only auto-select it while creating a new upload as an
+    // unlocked (super_admin) account.
+    if (!isEdit.value && !jemaatLocked.value && scanned.jemaatName) {
       const matchedJemaatId = matchJemaat(scanned.jemaatName, jemaatList.value)
       if (matchedJemaatId) {
         jemaatId.value = matchedJemaatId
@@ -414,11 +436,12 @@ async function remove() {
           <div>
             <label class="label-eyebrow mb-1 block">Jemaat</label>
             <div class="relative">
-              <select v-model="jemaatId" class="input appearance-none pr-8" :disabled="isEdit">
+              <select v-model="jemaatId" class="input appearance-none pr-8" :disabled="isEdit || jemaatLocked">
                 <option v-for="j in jemaatList" :key="j.id" :value="j.id">{{ j.name }}</option>
               </select>
               <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
             </div>
+            <p v-if="jemaatLocked" class="mt-1 text-xs text-muted">Akun kamu cuma bisa mengelola liturgi jemaat ini.</p>
           </div>
 
           <div class="grid grid-cols-2 gap-3">

@@ -10,6 +10,7 @@ import { RouterLink } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { nearestSundayIso, toIsoDate } from '@/lib/date'
+import { useAuthStore } from '@/stores/authStore'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   ChevronDown,
@@ -37,6 +38,7 @@ interface SlotInfo {
   fileUrl: string
 }
 
+const auth = useAuthStore()
 const jemaatList = ref<JemaatRecord[]>([])
 const loading = ref(true)
 // jemaatId -> sesi -> slot info (only sessions that actually have a row)
@@ -122,6 +124,13 @@ watch(selectedDate, loadSlots)
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
+  if (auth.adminRole === 'jemaat_admin' && auth.adminJemaatId) {
+    // Same reasoning as the upload form's dropdown: this whole page is
+    // "does jemaat X have this week's liturgi yet" across every
+    // congregation, which isn't this admin's to see — narrow it down to
+    // the one row/jemaat they actually manage.
+    jemaatList.value = jemaatList.value.filter((j) => j.id === auth.adminJemaatId)
+  }
   const set = new Set(jemaatList.value.map((j) => j.category).filter((c): c is string => !!c))
   daerahList.value = ['Semua', ...Array.from(set).sort()]
   await loadSlots()
