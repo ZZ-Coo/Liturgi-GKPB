@@ -72,6 +72,24 @@ export async function scanPdfCover(file: File): Promise<ScannedCover> {
   return parseCoverText(page1, page2)
 }
 
+// .docx has no page concept at the text-extraction level (mammoth just
+// walks paragraphs), so the whole document text arrives in one string —
+// no page1/page2 split needed like the PDF path above. Same regex parser
+// underneath either way, since the actual cover wording/layout is the
+// same regardless of which format the file happens to be saved as.
+export async function scanDocxCover(file: File): Promise<ScannedCover> {
+  const mammoth = await import('mammoth')
+  const buffer = await file.arrayBuffer()
+  const { value: text } = await mammoth.extractRawText({ arrayBuffer: buffer })
+  return parseCoverText(text)
+}
+
+export async function scanFileCover(file: File): Promise<ScannedCover> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.docx')) return scanDocxCover(file)
+  return scanPdfCover(file)
+}
+
 // `extraText` covers the case (very common in the real templates) where
 // Tema/Warna Liturgi sit on page 2, under a repeated letterhead, rather
 // than on the page 1 cover itself.

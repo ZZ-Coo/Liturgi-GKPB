@@ -35,6 +35,7 @@ interface ExistingSlot {
   id: string
   status: 'DRAFT' | 'PUBLISHED'
   originalFilename: string
+  fileUrl: string
 }
 const existingSlot = ref<ExistingSlot | null>(null)
 const checkingSlot = ref(false)
@@ -101,10 +102,11 @@ async function checkSlot() {
   const token = ++slotCheckToken // guards against an older, slower request
   const { data } = await supabase
     .from('liturgi')
-    .select('id, status, originalFilename')
+    .select('id, status, originalFilename, fileUrl')
     .eq('jemaatId', jemaatId.value)
     .eq('tanggal', tanggal.value)
     .eq('sesi', sesi.value)
+    .is('deletedAt', null)
     .maybeSingle()
 
   if (token !== slotCheckToken) return // a newer check already superseded this one
@@ -119,7 +121,20 @@ watch([jemaatId, tanggal, sesi], () => {
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
-  if (jemaatList.value.length && !jemaatId.value) jemaatId.value = jemaatList.value[0].id
+
+  // Pre-fill from the Overview page's "+" chips (?jemaatId=&tanggal=&sesi=)
+  // — falls back to normal defaults for anything not passed, so opening
+  // /upload directly still works exactly as before.
+  const q = route.query
+  if (!isEdit.value) {
+    if (typeof q.jemaatId === 'string' && jemaatList.value.some((j) => j.id === q.jemaatId)) {
+      jemaatId.value = q.jemaatId
+    } else if (jemaatList.value.length && !jemaatId.value) {
+      jemaatId.value = jemaatList.value[0].id
+    }
+    if (typeof q.tanggal === 'string') tanggal.value = q.tanggal
+    if (q.sesi === 'PAGI' || q.sesi === 'SIANG' || q.sesi === 'SORE') sesi.value = q.sesi
+  }
 
   const { data: pendetaData } = await supabase.from('pendeta').select('id, name, titles').order('name')
   pendetaList.value = pendetaData ?? []
@@ -279,15 +294,19 @@ async function submit() {
       const ext = isPdf ? 'pdf' : 'docx'
       // Deterministic path — re-uploading for the same jemaat/tanggal/sesi
       // naturally replaces the old file instead of piling up orphans...
-      // but only when the extension matches. If this edit changes the
+      // but only when the extension matches. If this write changes the
       // file type (PDF -> DOCX or vice versa), the path itself changes,
       // so the old file at the old path is never touched by `upsert` and
       // would otherwise sit there forever. Delete it explicitly whenever
-      // we're about to write to a genuinely different path.
+      // we're about to write to a genuinely different path — true both in
+      // edit mode (currentFileUrl) AND when overwriting an existing slot
+      // from the create form (existingSlot, confirmed above) — the latter
+      // used to be missed entirely, orphaning the old file silently.
       const path = `${jemaatSlug(jemaatId.value)}/${tanggal.value}-${sesi.value.toLowerCase()}.${ext}`
+      const oldFileUrl = isEdit.value ? currentFileUrl.value : existingSlot.value?.fileUrl ?? null
 
-      if (isEdit.value && currentFileUrl.value) {
-        const oldPath = extractStoragePath(currentFileUrl.value)
+      if (oldFileUrl) {
+        const oldPath = extractStoragePath(oldFileUrl)
         if (oldPath && oldPath !== path) {
           await supabase.storage.from('liturgi-files').remove([oldPath])
         }
@@ -339,17 +358,15 @@ async function submit() {
 
 async function remove() {
   if (!editId) return
-  if (!confirm('Hapus liturgi ini?')) return
-  const { error: deleteError } = await supabase.from('liturgi').delete().eq('id', editId)
+  if (!confirm('Hapus liturgi ini? Masih bisa dipulihkan lewat Sampah di daftar liturgi.')) return
+  // Soft delete — the file stays in storage untouched (restore needs it
+  // back). Permanent removal (row + storage file) only happens from the
+  // Sampah view in the list, as a separate, more deliberate action.
+  const { error: deleteError } = await supabase
+    .from('liturgi')
+    .update({ deletedAt: new Date().toISOString() })
+    .eq('id', editId)
   if (deleteError) return
-
-  // The DB row is gone, but the file it pointed to isn't cleaned up by
-  // that on its own — remove it from storage too, or it sits there
-  // orphaned forever.
-  if (currentFileUrl.value) {
-    const path = extractStoragePath(currentFileUrl.value)
-    if (path) await supabase.storage.from('liturgi-files').remove([path])
-  }
 
   router.push('/')
 }
@@ -564,4 +581,4 @@ async function remove() {
       </form>
     </div>
   </AdminShell>
-</template>
+</template> 

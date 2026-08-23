@@ -47,6 +47,7 @@ CREATE TABLE "liturgi" (
     "originalFilename" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "liturgi_pkey" PRIMARY KEY ("id")
 );
@@ -61,8 +62,10 @@ CREATE UNIQUE INDEX "pendeta_code_key" ON "pendeta"("code");
 CREATE INDEX "liturgi_jemaatId_tanggal_idx" ON "liturgi"("jemaatId", "tanggal");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "liturgi_jemaatId_tanggal_sesi_key" ON "liturgi"("jemaatId", "tanggal", "sesi");
-
+CREATE UNIQUE INDEX "liturgi_jemaatId_tanggal_sesi_active_key"
+  ON "liturgi" ("jemaatId", "tanggal", "sesi")
+  WHERE "deletedAt" IS NULL;
+ 
 -- AddForeignKey
 ALTER TABLE "liturgi" ADD CONSTRAINT "liturgi_jemaatId_fkey" FOREIGN KEY ("jemaatId") REFERENCES "jemaat"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -79,6 +79,16 @@ model Liturgi {
   pendetaNama  String?
   status       LiturgiStatus @default(DRAFT)
 
+  // Soft delete: deletedAt non-null = "in trash" (filtered out of every
+  // normal query, restorable). The old @@unique([jemaatId, tanggal, sesi])
+  // below is now enforced instead by a PARTIAL unique index that only
+  // applies to non-deleted rows (WHERE "deletedAt" IS NULL) — Prisma's
+  // schema DSL can't express a WHERE-qualified unique index, so that
+  // constraint lives only in the migration SQL now, not as `@@unique`
+  // here. Without the partial index, a soft-deleted slot would
+  // permanently block that jemaat+tanggal+sesi from ever being reused.
+  deletedAt DateTime?
+
   fileUrl          String // public URL in the liturgi-files bucket
   fileType         FileType
   originalFilename String
@@ -86,7 +96,6 @@ model Liturgi {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
 
-  @@unique([jemaatId, tanggal, sesi])
   @@index([jemaatId, tanggal])
   @@map("liturgi")
 }

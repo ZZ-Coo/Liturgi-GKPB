@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchTenantBySlug, buildRootUrl } from '@/lib/tenant'
 import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
 import { liturgicalTint } from '@/lib/liturgicalColor'
-import { Church, Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft } from 'lucide-vue-next'
+import { toIsoDate } from '@/lib/date'
+import { Church, Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -14,6 +15,7 @@ const PdfViewer = defineAsyncComponent(() => import('@/components/PdfViewer.vue'
 const DocxViewer = defineAsyncComponent(() => import('@/components/DocxViewer.vue'))
 
 const route = useRoute()
+const router = useRouter()
 const liturgi = useLiturgiStore()
 
 type Sesi = 'PAGI' | 'SIANG' | 'SORE'
@@ -27,15 +29,23 @@ const sesiIndex = computed(() => SESI_OPTIONS.findIndex((o) => o.value === sesi.
 const jemaatId = ref<string | null>(null)
 const jemaatName = ref<string | null>(null)
 const jemaatCategory = ref<string | null>(null)
-const tanggal = ref<string>((route.params.tanggal as string) ?? new Date().toISOString().slice(0, 10))
+// No fixed day-of-week assumption here — some jemaat hold services on
+// days other than Sunday. An explicit /:tanggal in the URL always wins;
+// otherwise this starts at today and gets corrected in onMounted once
+// the jemaat is known, via a query for whichever date actually has a
+// liturgi (see liturgiStore.resolveDefaultDate).
+const explicitTanggal = route.params.tanggal as string | undefined
+const tanggal = ref<string>(explicitTanggal || toIsoDate(new Date()))
 const tenantLoading = ref(true)
 
-const tanggalLabel = new Date(tanggal.value + 'T00:00:00').toLocaleDateString('id-ID', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-})
+const tanggalLabel = computed(() =>
+  new Date(tanggal.value + 'T00:00:00').toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }),
+)
 
 // Ties the page's accent to the actual liturgical colour of the day
 // (as entered by the admin), so each week reads distinctly instead of
@@ -53,6 +63,51 @@ function switchSesi(next: Sesi) {
   load()
 }
 
+// Pagi is the default first try; if that session has nothing published,
+// fall through Siang then Sore instead of leaving the page looking empty
+// just because the wrong tab happened to be selected first. Shared by
+// onMounted and the ◀▶ archive arrows below (landing on a new date needs
+// the same fallback — the session that was open before may not be the
+// one that's actually published on the new date).
+async function loadWithSesiFallback() {
+  await load()
+  if (!liturgi.current) {
+    for (const opt of SESI_OPTIONS) {
+      if (opt.value === sesi.value) continue
+      await switchSesi(opt.value)
+      if (liturgi.current) break
+    }
+  }
+}
+
+// ◀▶ archive browsing: jumps to the nearest OTHER published date (any
+// sesi), not a blind ±7-day step — see liturgiStore.findAdjacentDate.
+const prevDate = ref<string | null>(null)
+const nextDate = ref<string | null>(null)
+
+async function refreshAdjacentDates() {
+  if (!jemaatId.value) return
+  const [prev, next] = await Promise.all([
+    liturgi.findAdjacentDate(jemaatId.value, tanggal.value, 'prev'),
+    liturgi.findAdjacentDate(jemaatId.value, tanggal.value, 'next'),
+  ])
+  prevDate.value = prev
+  nextDate.value = next
+}
+
+async function goToDate(direction: 'prev' | 'next') {
+  const target = direction === 'prev' ? prevDate.value : nextDate.value
+  if (!target || !jemaatId.value) return
+  tanggal.value = target
+  // Keeps the URL shareable/bookmarkable and in sync with browser
+  // back/forward, without re-running setup() — this component instance
+  // stays mounted across a params-only route change, so state is updated
+  // directly rather than relying on a route watcher.
+  router.replace({ name: 'public-liturgi-by-date', params: { tanggal: target } })
+  await loadWithSesiFallback()
+  await refreshAdjacentDates()
+}
+
 onMounted(async () => {
   if (tenant.kind !== 'tenant') {
     tenantLoading.value = false
@@ -66,17 +121,15 @@ onMounted(async () => {
   jemaatName.value = jemaat.name
   jemaatCategory.value = jemaat.category
 
-  await load()
-  // Pagi is the default first try; if that session has nothing published,
-  // fall through Siang then Sore instead of leaving the page looking empty
-  // just because the wrong tab happened to be selected first.
-  if (!liturgi.current) {
-    for (const opt of SESI_OPTIONS) {
-      if (opt.value === sesi.value) continue
-      await switchSesi(opt.value)
-      if (liturgi.current) break
-    }
+  // Only resolve a data-driven default when the URL didn't already pin
+  // a specific date — an explicit /:tanggal link should never be
+  // silently redirected to a different date.
+  if (!explicitTanggal) {
+    tanggal.value = await liturgi.resolveDefaultDate(jemaatId.value, toIsoDate(new Date()))
   }
+
+  await loadWithSesiFallback()
+  await refreshAdjacentDates()
 })
 </script>
 
@@ -110,9 +163,33 @@ onMounted(async () => {
           <div class="space-y-1.5">
             <p v-if="jemaatCategory" class="label-eyebrow text-accent">{{ jemaatCategory }}</p>
             <p v-if="jemaatName" class="font-display text-xl font-semibold leading-tight text-ink">{{ jemaatName }}</p>
-            <p class="flex items-center justify-center gap-1.5 text-xs text-muted">
-              <CalendarDays class="h-3.5 w-3.5" />
-              {{ tanggalLabel }}
+            <p class="flex items-center justify-center gap-1 text-xs text-muted">
+              <button
+                type="button"
+                class="rounded-full p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+                :class="prevDate ? 'hover:bg-accent-soft hover:text-accent' : ''"
+                :disabled="!prevDate"
+                title="Liturgi terpublikasi sebelumnya"
+                aria-label="Liturgi sebelumnya"
+                @click="goToDate('prev')"
+              >
+                <ChevronLeft class="h-3.5 w-3.5" />
+              </button>
+              <span class="flex items-center gap-1.5">
+                <CalendarDays class="h-3.5 w-3.5" />
+                {{ tanggalLabel }}
+              </span>
+              <button
+                type="button"
+                class="rounded-full p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+                :class="nextDate ? 'hover:bg-accent-soft hover:text-accent' : ''"
+                :disabled="!nextDate"
+                title="Liturgi terpublikasi berikutnya"
+                aria-label="Liturgi berikutnya"
+                @click="goToDate('next')"
+              >
+                <ChevronRight class="h-3.5 w-3.5" />
+              </button>
             </p>
           </div>
 
@@ -136,11 +213,12 @@ onMounted(async () => {
             </button>
           </div>
 
-          <!-- tema lives inside the same letterhead card on desktop, under
-               a divider, instead of a second separate card below it -->
+          <!-- tema lives inside the same letterhead card at every breakpoint
+               now — a separate card below it on mobile was what made the
+               "Minggu ..." block eat so much vertical space. -->
           <template v-if="liturgi.current?.tema">
             <div class="h-px w-16 bg-line" />
-            <div class="hidden w-full items-start gap-3 rounded-xl px-1 text-left lg:flex" :class="tint ? tint.soft : 'bg-accent-soft'">
+            <div class="flex w-full items-start gap-3 rounded-xl px-1 text-left" :class="tint ? tint.soft : 'bg-accent-soft'">
               <div class="w-full rounded-xl px-3 py-3">
                 <BookOpenText class="mb-1.5 h-4 w-4" :class="tint ? tint.text : 'text-accent'" />
                 <p v-if="liturgi.current.mingguKe" class="label-eyebrow" :class="tint ? tint.text : 'text-accent'">{{ liturgi.current.mingguKe }}</p>
@@ -174,27 +252,6 @@ onMounted(async () => {
         <p v-else-if="liturgi.error" class="text-center text-sm text-danger">{{ liturgi.error }}</p>
 
         <template v-else-if="liturgi.current">
-          <!-- shown on mobile only — desktop shows the copy inside the letterhead card instead -->
-          <div
-            v-if="liturgi.current.tema"
-            class="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-line bg-white px-4 py-3.5 shadow-card lg:hidden"
-            :class="tint ? ['border-l-4', tint.border] : 'border-l-4 border-l-accent'"
-          >
-            <BookOpenText class="mt-0.5 h-4 w-4 shrink-0" :class="tint ? tint.text : 'text-accent'" />
-            <div class="text-left">
-              <p v-if="liturgi.current.mingguKe" class="label-eyebrow">{{ liturgi.current.mingguKe }}</p>
-              <h2 class="font-display text-base font-semibold leading-snug text-ink">{{ liturgi.current.tema }}</h2>
-              <span
-                v-if="tint"
-                class="chip mt-1.5"
-                :class="[tint.soft, tint.text]"
-              >
-                <span class="h-1.5 w-1.5 rounded-full" :class="tint.dot" />
-                Warna Liturgi: {{ tint.label }}
-              </span>
-            </div>
-          </div>
-
           <!-- PDF: rendered ourselves so every phone shows the same clear,
                zoomable view instead of relying on each browser's own PDF plugin
                (which is inconsistent, especially on mobile). -->

@@ -2,7 +2,8 @@
 import { watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
-import { Church, LogOut } from 'lucide-vue-next'
+import { simplifiedView } from '@/composables/adminViewMode'
+import { Church, LogOut, Rows3, LayoutGrid } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -29,7 +30,7 @@ watch(
 <template>
   <div class="min-h-screen bg-paper">
     <header class="sticky top-0 z-10 border-b border-line bg-white/85 backdrop-blur-md">
-      <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
+      <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
         <div class="flex items-center gap-2.5">
           <div class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper">
             <Church class="h-4 w-4 text-accent" stroke-width="1.75" />
@@ -41,6 +42,37 @@ watch(
         </div>
 
         <div class="flex items-center gap-3">
+          <!-- Normal/Simpel — a 2-segment icon pill, same sliding-pill
+               pattern as the public page's Pagi/Siang/Sore toggle, just
+               reflecting this is the admin equivalent of it: one page,
+               a view-mode switch, not a second destination to navigate to. -->
+          <div class="relative inline-flex rounded-full border border-line bg-paper p-0.5">
+            <div
+              class="absolute inset-y-0.5 w-[calc(50%-0.125rem)] rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
+              :class="simplifiedView ? 'translate-x-[calc(100%+0.25rem)]' : 'translate-x-0'"
+            />
+            <button
+              type="button"
+              class="relative z-10 flex items-center justify-center rounded-full px-2.5 py-1.5 transition-colors"
+              :class="!simplifiedView ? 'text-white' : 'text-muted hover:text-ink'"
+              title="Normal — daftar lengkap"
+              aria-label="Tampilan normal"
+              @click="simplifiedView = false"
+            >
+              <Rows3 class="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              class="relative z-10 flex items-center justify-center rounded-full px-2.5 py-1.5 transition-colors"
+              :class="simplifiedView ? 'text-white' : 'text-muted hover:text-ink'"
+              title="Simpel — ringkas per jemaat"
+              aria-label="Tampilan simpel"
+              @click="simplifiedView = true"
+            >
+              <LayoutGrid class="h-3.5 w-3.5" />
+            </button>
+          </div>
+
           <span v-if="auth.email" class="hidden text-xs text-muted sm:inline">{{ auth.email }}</span>
           <button class="btn-ghost gap-1.5 text-muted hover:text-danger" @click="logout">
             <LogOut class="h-3.5 w-3.5" />
@@ -50,7 +82,7 @@ watch(
       </div>
     </header>
 
-    <main class="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <slot />
     </main>
   </div>
