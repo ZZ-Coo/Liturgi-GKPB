@@ -8,7 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { extractStoragePath } from '@/lib/storage'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
-import { scanPdfCover, matchPendeta, matchJemaat } from '@/lib/scan-cover'
+import { scanFileCover, matchPendeta, matchJemaat } from '@/lib/scan-cover'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   CalendarDays,
@@ -167,15 +167,16 @@ onMounted(async () => {
 })
 
 async function detectFromFile() {
-  if (!file.value || !file.value.name.toLowerCase().endsWith('.pdf')) {
-    scanNote.value = 'Deteksi otomatis cuma jalan buat file PDF.'
+  const name = file.value?.name.toLowerCase() ?? ''
+  if (!file.value || !(name.endsWith('.pdf') || name.endsWith('.docx'))) {
+    scanNote.value = 'Deteksi otomatis cuma jalan buat file PDF atau Word (.docx).'
     return
   }
 
   scanning.value = true
   scanNote.value = null
   try {
-    const scanned = await scanPdfCover(file.value)
+    const scanned = await scanFileCover(file.value)
     const filled: string[] = []
 
     // Jemaat is locked in edit mode (it's part of the slot's identity),
@@ -341,11 +342,31 @@ async function submit() {
     if (isEdit.value) {
       const { error: updateError } = await supabase.from('liturgi').update(payload).eq('id', editId)
       if (updateError) throw updateError
-    } else {
-      const { error: upsertError } = await supabase
+    } else if (existingSlot.value) {
+      // An active row already occupies this jemaat+tanggal+sesi (confirmed
+      // above via the overwrite dialog) — update it directly by id.
+      //
+      // NOT `.upsert(payload, { onConflict: 'jemaatId,tanggal,sesi' })`
+      // here: since the slot's uniqueness moved to a *partial* unique index
+      // (`... WHERE "deletedAt" IS NULL`, see schema.prisma) so that a
+      // soft-deleted row doesn't block the slot forever, Postgres can no
+      // longer use it as an ON CONFLICT arbiter from a plain column list —
+      // arbiter inference against a partial index requires the INSERT's
+      // ON CONFLICT clause to repeat that same WHERE predicate, which
+      // PostgREST's upsert() has no way to express. It fails with
+      // "42P10: no unique or exclusion constraint matching the ON
+      // CONFLICT specification", surfaced to the client as a 400.
+      const { error: updateError } = await supabase
         .from('liturgi')
-        .upsert(payload, { onConflict: 'jemaatId,tanggal,sesi' })
-      if (upsertError) throw upsertError
+        .update(payload)
+        .eq('id', existingSlot.value.id)
+      if (updateError) throw updateError
+    } else {
+      // No active row at this slot — a plain insert is safe even if an
+      // old *soft-deleted* row happens to share the same jemaat/tanggal/
+      // sesi, since the partial index only constrains active rows.
+      const { error: insertError } = await supabase.from('liturgi').insert(payload)
+      if (insertError) throw insertError
     }
 
     router.push('/')

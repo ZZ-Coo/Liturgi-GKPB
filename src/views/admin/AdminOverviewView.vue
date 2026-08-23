@@ -8,7 +8,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '@/lib/supabase'
-import { extractStoragePath } from '@/lib/storage'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import AdminShell from '@/components/admin/AdminShell.vue'
@@ -74,6 +73,10 @@ async function loadSlots() {
     .from('liturgi')
     .select('id, jemaatId, sesi, status, fileUrl')
     .eq('tanggal', selectedDate.value)
+    // Without this, a soft-deleted slot (see LiturgiListView's Sampah) would
+    // still show here as a filled/occupied session chip — the whole point
+    // of soft delete is that it's supposed to free the slot back up.
+    .is('deletedAt', null)
 
   const map = new Map<string, Partial<Record<Sesi, SlotInfo>>>()
   for (const row of data ?? []) {
@@ -92,15 +95,21 @@ const actionError = ref<string | null>(null)
 // hover actions is not having to detour through the edit page just to
 // remove a slot. Refetches afterwards rather than patching the Map by
 // hand, since a full week's worth of rows is a cheap, simple query.
+//
+// Soft delete only, same as LiturgiListView's `remove()` — this chip is
+// one accidental click away during a hover, so it must not permanently
+// destroy the file. It has to go through the same Sampah/restore path,
+// not a shortcut around it.
 async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
-  if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}?`)) return
+  if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah.`)) return
   deletingSlot.value = slot.id
   actionError.value = null
   try {
-    const { error } = await supabase.from('liturgi').delete().eq('id', slot.id)
+    const { error } = await supabase
+      .from('liturgi')
+      .update({ deletedAt: new Date().toISOString() })
+      .eq('id', slot.id)
     if (error) throw error
-    const path = extractStoragePath(slot.fileUrl)
-    if (path) await supabase.storage.from('liturgi-files').remove([path])
     await loadSlots()
   } catch (err) {
     actionError.value = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'

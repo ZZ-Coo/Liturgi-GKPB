@@ -10,7 +10,15 @@
 // admin-dashboard-only.
 
 export function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  // NOT `d.toISOString().slice(0, 10)` — toISOString() always converts to
+  // UTC first. Bali is WITA (UTC+8), so anywhere from midnight to 8am
+  // local time, the UTC date is still "yesterday" — this function would
+  // return the wrong day for exactly the hours people are most likely to
+  // check before a Sunday morning service. Use local date parts instead.
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 export function nearestSundayIso(from: Date = new Date()): string {
