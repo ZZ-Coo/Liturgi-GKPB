@@ -26,8 +26,10 @@ import {
   ScanLine,
   Loader2,
   Save,
+  ArrowLeft,
 } from 'lucide-vue-next'
 import { simplifiedView } from '@/composables/adminViewMode'
+import { pushToast } from '@/composables/toast'
 
 const route = useRoute()
 const router = useRouter()
@@ -415,9 +417,16 @@ async function submit() {
       if (insertError) throw insertError
     }
 
+    // Toast (not the inline `error` banner) is what actually gets seen here
+    // — the redirect below unmounts this page almost immediately, so
+    // anything painted only into this form's own DOM would flash and be
+    // gone before anyone reads it.
+    pushToast(isEdit.value ? 'Liturgi berhasil diperbarui' : 'Liturgi berhasil diunggah')
     router.push('/')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Gagal menyimpan'
+    const message = err instanceof Error ? err.message : 'Gagal menyimpan'
+    error.value = message
+    pushToast(message, 'error')
   } finally {
     saving.value = false
   }
@@ -433,8 +442,12 @@ async function remove() {
     .from('liturgi')
     .update({ deletedAt: new Date().toISOString() })
     .eq('id', editId)
-  if (deleteError) return
+  if (deleteError) {
+    pushToast('Gagal menghapus liturgi', 'error')
+    return
+  }
 
+  pushToast('Liturgi dihapus — masih bisa dipulihkan lewat Sampah')
   router.push('/')
 }
 </script>
@@ -442,12 +455,29 @@ async function remove() {
 <template>
   <AdminShell>
     <div class="mx-auto max-w-lg space-y-6 lg:max-w-4xl">
-      <div>
-        <p class="label-eyebrow text-accent">Admin</p>
-        <h1 class="font-display text-2xl font-semibold text-ink">{{ isEdit ? 'Edit Liturgi' : 'Upload Liturgi' }}</h1>
-        <p class="mt-0.5 text-sm text-muted">
-          {{ isEdit ? 'Perbarui detail atau berkas liturgi ini.' : 'Tetapkan jadwal, lalu unggah berkas tata ibadah.' }}
-        </p>
+      <div class="flex items-start gap-3">
+        <!-- router.back() over a hardcoded RouterLink to="/" — a
+             jemaat_admin lands here from their own home, a super_admin
+             sometimes from a Ringkasan slot's "+", sometimes from Semua
+             Liturgi; back() returns to whichever one it actually was,
+             filters/scroll position and all, instead of resetting to a
+             generic list view. -->
+        <button
+          type="button"
+          class="btn-ghost mt-0.5 !px-2 text-muted hover:text-ink"
+          title="Kembali"
+          aria-label="Kembali"
+          @click="router.back()"
+        >
+          <ArrowLeft class="h-4 w-4" />
+        </button>
+        <div>
+          <p class="label-eyebrow text-accent">Admin</p>
+          <h1 class="font-display text-2xl font-semibold text-ink">{{ isEdit ? 'Edit Liturgi' : 'Upload Liturgi' }}</h1>
+          <p class="mt-0.5 text-sm text-muted">
+            {{ isEdit ? 'Perbarui detail atau berkas liturgi ini.' : 'Tetapkan jadwal, lalu unggah berkas tata ibadah.' }}
+          </p>
+        </div>
       </div>
 
       <!-- Desktop: two columns — schedule + service detail on the left

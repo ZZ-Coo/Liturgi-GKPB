@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { simplifiedView } from '@/composables/adminViewMode'
 import { Church, LogOut, Rows3, LayoutGrid } from 'lucide-vue-next'
+import GlobalToast from '@/components/admin/GlobalToast.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -43,14 +44,13 @@ watch(
 
         <div class="flex items-center gap-3">
           <!-- Normal/Simpel — a 2-segment icon pill, same sliding-pill
-               pattern as the public page's Pagi/Siang/Sore toggle. Only
-               meaningful for super_admin (a jemaat_admin's one page has
-               nothing to switch between) — and it's no longer just the
-               List page's view mode: Simpel now also collapses the
-               optional section on the Upload/Edit form and drops action
-               buttons down to icon-only everywhere, so it stays visible
-               across every admin page, not just List. -->
-          <div v-if="auth.adminRole === 'super_admin'" class="relative inline-flex rounded-full border border-line bg-paper p-0.5">
+               pattern as the public page's Pagi/Siang/Sore toggle. No
+               longer super_admin-only: a jemaat_admin's Riwayat also
+               groups by month, so Simpel collapsing those groups (plus
+               the Upload/Edit form's optional section, plus dropping
+               action-button text to icon-only) is just as useful there —
+               shown on every admin page via AdminShell, not just List. -->
+          <div class="relative inline-flex rounded-full border border-line bg-paper p-0.5">
             <div
               class="absolute inset-y-0.5 w-[calc(50%-0.125rem)] rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
               :class="simplifiedView ? 'translate-x-[calc(100%+0.25rem)]' : 'translate-x-0'"
@@ -89,5 +89,7 @@ watch(
     <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <slot />
     </main>
+
+    <GlobalToast />
   </div>
 </template>

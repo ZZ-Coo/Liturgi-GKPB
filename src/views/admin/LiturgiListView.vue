@@ -7,6 +7,7 @@ import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import { simplifiedView } from '@/composables/adminViewMode'
+import { pushToast } from '@/composables/toast'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   Plus,
@@ -28,6 +29,9 @@ import {
   LayoutDashboard,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  MapPin,
+  CircleDashed,
 } from 'lucide-vue-next'
 
 type Sesi = 'PAGI' | 'SIANG' | 'SORE'
@@ -235,6 +239,11 @@ function jemaatStatus(id: string): 'kosong' | 'draf' | 'terbit' {
   return Object.values(slots).some((s) => s?.status === 'PUBLISHED') ? 'terbit' : 'draf'
 }
 
+// Shared by both Ringkasan badge renderings (Simpel + Normal) so the
+// icon/label pairing can't drift out of sync between the two.
+const JEMAAT_STATUS_ICON = { terbit: CheckCircle2, draf: Circle, kosong: CircleDashed } as const
+const JEMAAT_STATUS_LABEL = { terbit: 'Terbit', draf: 'Draf', kosong: 'Kosong' } as const
+
 async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
   if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah.`)) return
   deletingSlot.value = slot.id
@@ -243,8 +252,11 @@ async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
     const { error } = await supabase.from('liturgi').update({ deletedAt: new Date().toISOString() }).eq('id', slot.id)
     if (error) throw error
     await loadSlots()
+    pushToast('Liturgi dihapus — masih bisa dipulihkan lewat Sampah')
   } catch (err) {
-    actionError.value = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'
+    const message = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'
+    actionError.value = message
+    pushToast(message, 'error')
   } finally {
     deletingSlot.value = null
   }
@@ -264,6 +276,7 @@ async function toggleRingkasan() {
 interface DaerahGroup {
   name: string
   jemaat: JemaatRecord[]
+  terbitCount: number
 }
 const ringkasanGroups = computed<DaerahGroup[]>(() => {
   const q = query.value.trim().toLowerCase()
@@ -279,9 +292,20 @@ const ringkasanGroups = computed<DaerahGroup[]>(() => {
     map.get(key)!.push(j)
   }
   return Array.from(map.entries())
-    .map(([name, jemaat]) => ({ name, jemaat: jemaat.sort((a, b) => a.name.localeCompare(b.name)) }))
+    .map(([name, jemaat]) => ({
+      name,
+      jemaat: jemaat.sort((a, b) => a.name.localeCompare(b.name)),
+      terbitCount: jemaat.filter((j) => jemaatStatus(j.id) === 'terbit').length,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name))
 })
+
+// Only auto-expand every daerah accordion while actively searching by name
+// — that's the one case where a match could be hiding inside a collapsed
+// group. Otherwise (including a single daerah picked via the Filter
+// button) groups stay collapsed, which is the whole point: scan the
+// terbit-count badges first, only open the daerah that needs attention.
+const isRingkasanFiltering = computed(() => query.value.trim().length > 0)
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
@@ -298,24 +322,30 @@ async function remove(row: Row) {
   // within the Sampah view.
   const { error } = await supabase.from('liturgi').update({ deletedAt: new Date().toISOString() }).eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal menghapus: ${error.message}`
+    const message = `Gagal menghapus: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
 
   rows.value = rows.value.filter((r) => r.id !== row.id)
   selected.value.delete(row.id)
   total.value = Math.max(0, total.value - 1)
+  pushToast('Liturgi dihapus — masih bisa dipulihkan lewat Sampah')
 }
 
 async function restore(row: Row) {
   actionError.value = null
   const { error } = await supabase.from('liturgi').update({ deletedAt: null }).eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal memulihkan: ${error.message}`
+    const message = `Gagal memulihkan: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   rows.value = rows.value.filter((r) => r.id !== row.id)
   total.value = Math.max(0, total.value - 1)
+  pushToast('Liturgi dipulihkan')
 }
 
 async function permanentDelete(row: Row) {
@@ -324,7 +354,9 @@ async function permanentDelete(row: Row) {
   actionError.value = null
   const { error } = await supabase.from('liturgi').delete().eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal menghapus permanen: ${error.message}`
+    const message = `Gagal menghapus permanen: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   const path = extractStoragePath(row.fileUrl)
@@ -332,6 +364,7 @@ async function permanentDelete(row: Row) {
 
   rows.value = rows.value.filter((r) => r.id !== row.id)
   total.value = Math.max(0, total.value - 1)
+  pushToast('Liturgi dihapus permanen')
 }
 
 async function togglePublish(row: Row) {
@@ -339,10 +372,13 @@ async function togglePublish(row: Row) {
   const next = row.status === 'DRAFT' ? 'PUBLISHED' : 'DRAFT'
   const { error } = await supabase.from('liturgi').update({ status: next }).eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal mengubah status: ${error.message}`
+    const message = `Gagal mengubah status: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   row.status = next
+  pushToast(next === 'PUBLISHED' ? 'Liturgi diterbitkan' : 'Liturgi dijadikan draf')
 }
 
 // ── Bulk selection ────────────────────────────────────────────────────
@@ -384,8 +420,11 @@ async function bulkDelete() {
     rows.value = rows.value.filter((r) => !selected.value.has(r.id))
     total.value = Math.max(0, total.value - ids.length)
     selected.value.clear()
+    pushToast(`${ids.length} liturgi dihapus — masih bisa dipulihkan lewat Sampah`)
   } catch (err) {
-    actionError.value = err instanceof Error ? `Gagal menghapus massal: ${err.message}` : 'Gagal menghapus massal.'
+    const message = err instanceof Error ? `Gagal menghapus massal: ${err.message}` : 'Gagal menghapus massal.'
+    actionError.value = message
+    pushToast(message, 'error')
   } finally {
     bulkDeleting.value = false
   }
@@ -472,60 +511,144 @@ async function bulkDelete() {
         </div>
 
         <p v-if="ringkasanLoading" class="py-10 text-center text-sm text-muted">Memuat…</p>
-        <div v-else class="space-y-5">
-          <div v-for="group in ringkasanGroups" :key="group.name">
-            <p class="label-eyebrow mb-1.5">{{ group.name }}</p>
-            <ul class="card divide-y divide-line p-0">
-              <li v-for="j in group.jemaat" :key="j.id" class="group/row px-3.5 py-2.5">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="truncate text-sm font-medium text-ink">{{ j.name }}</span>
+        <template v-else>
+          <!-- Simplified: same global toggle as the ledger below — collapsed
+               per-daerah accordions with a terbit-count badge, so scanning
+               many daerah doesn't mean scrolling past every jemaat in each
+               one first. -->
+          <div v-if="compact" class="space-y-3">
+            <details
+              v-for="group in ringkasanGroups"
+              :key="group.name"
+              class="card group/daerah overflow-hidden p-0 open:pb-1"
+              :open="isRingkasanFiltering"
+            >
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 select-none">
+                <span class="flex items-center gap-2 text-sm font-medium text-ink">
+                  <MapPin class="h-4 w-4 text-accent" stroke-width="1.75" />
+                  {{ group.name }}
+                </span>
+                <span class="flex items-center gap-2">
                   <span
-                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-                    :class="{
-                      'bg-accent-soft text-accent': jemaatStatus(j.id) === 'terbit',
-                      'bg-gold-soft text-gold': jemaatStatus(j.id) === 'draf',
-                      'bg-line/60 text-muted': jemaatStatus(j.id) === 'kosong',
-                    }"
+                    class="rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="group.terbitCount === group.jemaat.length ? 'bg-accent-soft text-accent' : 'bg-line/70 text-muted'"
                   >
-                    {{ jemaatStatus(j.id) === 'terbit' ? 'Terbit' : jemaatStatus(j.id) === 'draf' ? 'Draf' : 'Kosong' }}
+                    {{ group.terbitCount }}/{{ group.jemaat.length }} terbit
                   </span>
-                </div>
-                <ul class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100">
-                  <li v-for="s in SESI_ORDER" :key="s" class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40">
-                    <span class="flex items-center gap-1.5 text-muted">
-                      <component :is="SESI_ICON[s]" class="h-3 w-3" /> {{ SESI_LABEL[s] }}
+                  <ChevronDown class="h-4 w-4 text-muted transition-transform group-open/daerah:rotate-180" />
+                </span>
+              </summary>
+
+              <ul class="divide-y divide-line border-t border-line">
+                <li v-for="j in group.jemaat" :key="j.id" class="group/row px-3.5 py-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="truncate text-sm font-medium text-ink">{{ j.name }}</span>
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                      :class="{
+                        'bg-accent-soft text-accent': jemaatStatus(j.id) === 'terbit',
+                        'bg-gold-soft text-gold': jemaatStatus(j.id) === 'draf',
+                        'bg-line/60 text-muted': jemaatStatus(j.id) === 'kosong',
+                      }"
+                    >
+                      <component :is="JEMAAT_STATUS_ICON[jemaatStatus(j.id)]" class="h-3 w-3" />
+                      {{ JEMAAT_STATUS_LABEL[jemaatStatus(j.id)] }}
                     </span>
-                    <span class="flex items-center gap-0.5">
-                      <template v-if="slotsByJemaat.get(j.id)?.[s]">
-                        <RouterLink :to="`/liturgi/${slotsByJemaat.get(j.id)![s]!.id}/edit`" class="rounded p-1 text-accent hover:bg-accent-soft" title="Edit">
-                          <Pencil class="h-3 w-3" />
-                        </RouterLink>
-                        <button
-                          type="button"
-                          class="rounded p-1 text-danger hover:bg-danger/10 disabled:opacity-50"
-                          title="Hapus"
-                          :disabled="deletingSlot === slotsByJemaat.get(j.id)![s]!.id"
-                          @click="deleteSlot(j.name, s, slotsByJemaat.get(j.id)![s]!)"
+                  </div>
+                  <ul class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100">
+                    <li v-for="s in SESI_ORDER" :key="s" class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40">
+                      <span class="flex items-center gap-1.5 text-muted">
+                        <component :is="SESI_ICON[s]" class="h-3 w-3" /> {{ SESI_LABEL[s] }}
+                      </span>
+                      <span class="flex items-center gap-0.5">
+                        <template v-if="slotsByJemaat.get(j.id)?.[s]">
+                          <RouterLink :to="`/liturgi/${slotsByJemaat.get(j.id)![s]!.id}/edit`" class="rounded p-1 text-accent hover:bg-accent-soft" title="Edit">
+                            <Pencil class="h-3 w-3" />
+                          </RouterLink>
+                          <button
+                            type="button"
+                            class="rounded p-1 text-danger hover:bg-danger/10 disabled:opacity-50"
+                            title="Hapus"
+                            :disabled="deletingSlot === slotsByJemaat.get(j.id)![s]!.id"
+                            @click="deleteSlot(j.name, s, slotsByJemaat.get(j.id)![s]!)"
+                          >
+                            <Trash2 class="h-3 w-3" />
+                          </button>
+                        </template>
+                        <RouterLink
+                          v-else
+                          :to="{ path: '/upload', query: { jemaatId: j.id, tanggal: selectedDate, sesi: s } }"
+                          class="rounded p-1 text-muted hover:bg-accent-soft hover:text-accent"
+                          title="Upload"
                         >
-                          <Trash2 class="h-3 w-3" />
-                        </button>
-                      </template>
-                      <RouterLink
-                        v-else
-                        :to="{ path: '/upload', query: { jemaatId: j.id, tanggal: selectedDate, sesi: s } }"
-                        class="rounded p-1 text-muted hover:bg-accent-soft hover:text-accent"
-                        title="Upload"
-                      >
-                        <Plus class="h-3 w-3" />
-                      </RouterLink>
-                    </span>
-                  </li>
-                </ul>
-              </li>
-            </ul>
+                          <Plus class="h-3 w-3" />
+                        </RouterLink>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </details>
+            <p v-if="!ringkasanGroups.length" class="py-10 text-center text-sm text-muted">Gak ada jemaat yang cocok.</p>
           </div>
-          <p v-if="!ringkasanGroups.length" class="py-10 text-center text-sm text-muted">Gak ada jemaat yang cocok.</p>
-        </div>
+
+          <!-- Normal: original always-expanded per-daerah lists, unchanged. -->
+          <div v-else class="space-y-5">
+            <div v-for="group in ringkasanGroups" :key="group.name">
+              <p class="label-eyebrow mb-1.5">{{ group.name }}</p>
+              <ul class="card divide-y divide-line p-0">
+                <li v-for="j in group.jemaat" :key="j.id" class="group/row px-3.5 py-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="truncate text-sm font-medium text-ink">{{ j.name }}</span>
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                      :class="{
+                        'bg-accent-soft text-accent': jemaatStatus(j.id) === 'terbit',
+                        'bg-gold-soft text-gold': jemaatStatus(j.id) === 'draf',
+                        'bg-line/60 text-muted': jemaatStatus(j.id) === 'kosong',
+                      }"
+                    >
+                      <component :is="JEMAAT_STATUS_ICON[jemaatStatus(j.id)]" class="h-3 w-3" />
+                      {{ JEMAAT_STATUS_LABEL[jemaatStatus(j.id)] }}
+                    </span>
+                  </div>
+                  <ul class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100">
+                    <li v-for="s in SESI_ORDER" :key="s" class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40">
+                      <span class="flex items-center gap-1.5 text-muted">
+                        <component :is="SESI_ICON[s]" class="h-3 w-3" /> {{ SESI_LABEL[s] }}
+                      </span>
+                      <span class="flex items-center gap-0.5">
+                        <template v-if="slotsByJemaat.get(j.id)?.[s]">
+                          <RouterLink :to="`/liturgi/${slotsByJemaat.get(j.id)![s]!.id}/edit`" class="rounded p-1 text-accent hover:bg-accent-soft" title="Edit">
+                            <Pencil class="h-3 w-3" />
+                          </RouterLink>
+                          <button
+                            type="button"
+                            class="rounded p-1 text-danger hover:bg-danger/10 disabled:opacity-50"
+                            title="Hapus"
+                            :disabled="deletingSlot === slotsByJemaat.get(j.id)![s]!.id"
+                            @click="deleteSlot(j.name, s, slotsByJemaat.get(j.id)![s]!)"
+                          >
+                            <Trash2 class="h-3 w-3" />
+                          </button>
+                        </template>
+                        <RouterLink
+                          v-else
+                          :to="{ path: '/upload', query: { jemaatId: j.id, tanggal: selectedDate, sesi: s } }"
+                          class="rounded p-1 text-muted hover:bg-accent-soft hover:text-accent"
+                          title="Upload"
+                        >
+                          <Plus class="h-3 w-3" />
+                        </RouterLink>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+            <p v-if="!ringkasanGroups.length" class="py-10 text-center text-sm text-muted">Gak ada jemaat yang cocok.</p>
+          </div>
+        </template>
       </template>
 
       <!-- ═══ Normal / Simplified / Sampah ═══ -->

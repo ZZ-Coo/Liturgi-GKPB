@@ -18,10 +18,13 @@ import { supabase } from '@/lib/supabase'
 import { extractStoragePath } from '@/lib/storage'
 import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import { useAuthStore } from '@/stores/authStore'
+import { simplifiedView } from '@/composables/adminViewMode'
+import { pushToast } from '@/composables/toast'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CalendarDays,
   Search,
   Sunrise,
@@ -33,7 +36,15 @@ import {
   RotateCcw,
   ArrowLeft,
   History,
+  CheckCircle2,
+  Circle,
 } from 'lucide-vue-next'
+
+// Same toggle as the super_admin's Ringkasan — a jemaat_admin only ever
+// has one jemaat, so there's no daerah to collapse, but Riwayat still
+// groups by month, and that list only grows over the years. Simpel
+// collapses those month groups the same way.
+const compact = computed(() => simplifiedView.value)
 
 type Sesi = 'PAGI' | 'SIANG' | 'SORE'
 const SESI_ORDER: Sesi[] = ['PAGI', 'SIANG', 'SORE']
@@ -96,8 +107,11 @@ async function quickDelete(s: Sesi, row: Row) {
     if (error) throw error
     await loadWeek()
     await loadHistory()
+    pushToast('Liturgi dihapus — masih bisa dipulihkan lewat Sampah')
   } catch (err) {
-    actionError.value = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'
+    const message = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'
+    actionError.value = message
+    pushToast(message, 'error')
   } finally {
     deletingId.value = null
   }
@@ -178,23 +192,29 @@ async function removeFromHistory(row: Row) {
   actionError.value = null
   const { error } = await supabase.from('liturgi').update({ deletedAt: new Date().toISOString() }).eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal menghapus: ${error.message}`
+    const message = `Gagal menghapus: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   historyRows.value = historyRows.value.filter((r) => r.id !== row.id)
   await loadWeek()
+  pushToast('Liturgi dihapus — masih bisa dipulihkan lewat Sampah')
 }
 
 async function restore(row: Row) {
   actionError.value = null
   const { error } = await supabase.from('liturgi').update({ deletedAt: null }).eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal memulihkan: ${error.message}`
+    const message = `Gagal memulihkan: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   trashRows.value = trashRows.value.filter((r) => r.id !== row.id)
   await loadHistory()
   await loadWeek()
+  pushToast('Liturgi dipulihkan')
 }
 
 async function permanentDelete(row: Row) {
@@ -203,12 +223,15 @@ async function permanentDelete(row: Row) {
   actionError.value = null
   const { error } = await supabase.from('liturgi').delete().eq('id', row.id)
   if (error) {
-    actionError.value = `Gagal menghapus permanen: ${error.message}`
+    const message = `Gagal menghapus permanen: ${error.message}`
+    actionError.value = message
+    pushToast(message, 'error')
     return
   }
   const path = extractStoragePath(row.fileUrl)
   if (path) await supabase.storage.from('liturgi-files').remove([path])
   trashRows.value = trashRows.value.filter((r) => r.id !== row.id)
+  pushToast('Liturgi dihapus permanen')
 }
 
 onMounted(async () => {
@@ -231,8 +254,8 @@ onMounted(async () => {
           <h1 class="font-display text-2xl font-semibold text-ink">{{ jemaatName || 'Jemaat Saya' }}</h1>
           <p class="mt-0.5 text-sm text-muted">Kelola jadwal dan riwayat liturgi jemaat kamu.</p>
         </div>
-        <RouterLink to="/upload" class="btn-primary gap-1.5">
-          <Plus class="h-4 w-4" /> Upload Liturgi
+        <RouterLink to="/upload" class="btn-primary gap-1.5" title="Upload Liturgi">
+          <Plus class="h-4 w-4" /> <span v-if="!compact">Upload Liturgi</span>
         </RouterLink>
       </div>
 
@@ -269,6 +292,7 @@ onMounted(async () => {
                   class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
                   :class="slotFor(s)!.status === 'PUBLISHED' ? 'bg-accent-soft text-accent' : 'bg-gold-soft text-gold'"
                 >
+                  <component :is="slotFor(s)!.status === 'PUBLISHED' ? CheckCircle2 : Circle" class="h-3 w-3" />
                   {{ slotFor(s)!.status === 'PUBLISHED' ? 'Terbit' : 'Draf' }}
                 </span>
                 <RouterLink :to="`/liturgi/${slotFor(s)!.id}/edit`" class="rounded p-1.5 text-accent hover:bg-accent-soft" title="Edit">
@@ -289,8 +313,9 @@ onMounted(async () => {
               v-else
               :to="{ path: '/upload', query: { tanggal: selectedDate, sesi: s } }"
               class="chip gap-1 border border-dashed border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent-line hover:text-accent"
+              title="Upload"
             >
-              <Plus class="h-3 w-3" /> Upload
+              <Plus class="h-3 w-3" /> <span v-if="!compact">Upload</span>
             </RouterLink>
           </li>
         </ul>
@@ -302,9 +327,9 @@ onMounted(async () => {
           <p class="field-group-heading">
             <History class="h-4 w-4 text-accent" /> {{ showTrash ? 'Sampah' : 'Riwayat' }}
           </p>
-          <button class="btn-ghost gap-1.5 text-xs text-muted" @click="toggleTrash">
+          <button class="btn-ghost gap-1.5 text-xs text-muted" :title="showTrash ? 'Kembali' : 'Sampah'" @click="toggleTrash">
             <component :is="showTrash ? ArrowLeft : Trash2" class="h-3.5 w-3.5" />
-            {{ showTrash ? 'Kembali' : 'Sampah' }}
+            <span v-if="!compact">{{ showTrash ? 'Kembali' : 'Sampah' }}</span>
           </button>
         </div>
 
@@ -320,6 +345,50 @@ onMounted(async () => {
           <div v-if="!groupedHistory.length" class="py-8 text-center text-sm text-muted">
             {{ query ? `Tidak ada yang cocok dengan "${query}".` : 'Belum ada riwayat liturgi.' }}
           </div>
+          <!-- Simpel: same collapse-per-group pattern as the super_admin's
+               Ringkasan — one month open at a time instead of scrolling
+               past years of history to find a recent entry. Auto-expands
+               while actively searching, same reasoning as Ringkasan: a
+               match shouldn't be able to hide inside a collapsed month. -->
+          <div v-else-if="compact" class="mt-2 space-y-3">
+            <details
+              v-for="group in groupedHistory"
+              :key="group.key"
+              class="card group/month overflow-hidden p-0 open:pb-1"
+              :open="!!query.trim()"
+            >
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 select-none">
+                <span class="text-sm font-medium text-ink">{{ group.label }}</span>
+                <span class="flex items-center gap-2">
+                  <span class="rounded-full bg-line/70 px-2 py-0.5 text-xs font-medium text-muted">{{ group.entries.length }}</span>
+                  <ChevronDown class="h-4 w-4 text-muted transition-transform group-open/month:rotate-180" />
+                </span>
+              </summary>
+              <ul class="divide-y divide-line border-t border-line">
+                <li
+                  v-for="row in group.entries"
+                  :key="row.id"
+                  class="flex items-center justify-between gap-2 px-3.5 py-2.5"
+                >
+                  <RouterLink :to="`/liturgi/${row.id}/edit`" class="flex items-center gap-2 text-sm text-ink hover:text-accent">
+                    <span class="h-1.5 w-1.5 rounded-full" :class="row.status === 'PUBLISHED' ? 'bg-accent' : 'bg-line'" />
+                    <component :is="SESI_ICON[row.sesi]" class="h-3.5 w-3.5 text-muted" />
+                    {{ SESI_LABEL[row.sesi] }} · {{ formatTanggal(row.tanggal) }}
+                  </RouterLink>
+                  <div class="flex items-center gap-0.5">
+                    <RouterLink :to="`/liturgi/${row.id}/edit`" class="rounded p-1.5 text-accent hover:bg-accent-soft" title="Edit">
+                      <Pencil class="h-3.5 w-3.5" />
+                    </RouterLink>
+                    <button type="button" class="rounded p-1.5 text-danger hover:bg-danger/10" title="Hapus" @click="removeFromHistory(row)">
+                      <Trash2 class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </details>
+          </div>
+
+          <!-- Normal: every month always expanded, unchanged. -->
           <div v-else class="mt-2 space-y-4">
             <div v-for="group in groupedHistory" :key="group.key">
               <p class="label-eyebrow mb-1.5">{{ group.label }}</p>
