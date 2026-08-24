@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { extractStoragePath } from '@/lib/storage'
-import { fetchAllJemaat } from '@/lib/tenant'
+import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { liturgicalTint } from '@/lib/liturgicalColor'
+import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import { simplifiedView } from '@/composables/adminViewMode'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import {
   Plus,
-  ChevronDown,
+  Filter,
   FileText,
   FileType2,
   Sunrise,
@@ -24,12 +25,17 @@ import {
   Loader2,
   ArrowLeft,
   RotateCcw,
+  LayoutDashboard,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next'
+
+type Sesi = 'PAGI' | 'SIANG' | 'SORE'
 
 interface Row {
   id: string
   tanggal: string
-  sesi: 'PAGI' | 'SIANG' | 'SORE'
+  sesi: Sesi
   mingguKe: string | null
   warnaLiturgi: string | null
   status: 'DRAFT' | 'PUBLISHED'
@@ -47,12 +53,27 @@ const loadingMore = ref(false) // pagination — appends to the list
 const total = ref(0)
 const daerah = ref('Semua')
 const daerahList = ref<string[]>([])
+const jemaatList = ref<JemaatRecord[]>([]) // kept in full now — Ringkasan mode needs id, not just category strings
 const query = ref('')
 const actionError = ref<string | null>(null)
-// Sampah (trash) — a separate view of soft-deleted rows, not a filter
-// alongside the normal list, since the available actions are completely
-// different (restore / delete forever vs. edit / publish / soft-delete).
+const filterOpen = ref(false)
+const filterRootEl = ref<HTMLElement | null>(null)
+function onClickOutsideFilter(e: MouseEvent) {
+  if (filterOpen.value && filterRootEl.value && !filterRootEl.value.contains(e.target as Node)) filterOpen.value = false
+}
+document.addEventListener('mousedown', onClickOutsideFilter)
+onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutsideFilter))
+
+// Three mutually-exclusive modes sharing one page/header, not three
+// routes — Sampah and Ringkasan swap out the whole content area, same
+// idea, so they can't both be open at once.
 const showTrash = ref(false)
+const showRingkasan = ref(false)
+
+// When this is on, every action button below drops its text label down
+// to just the icon (+ a title tooltip) — the whole page reads noticeably
+// lighter with ~85 jemaat's worth of rows on screen.
+const compact = computed(() => simplifiedView.value)
 
 const hasMore = computed(() => rows.value.length < total.value)
 
@@ -67,6 +88,7 @@ const visibleRows = computed(() => {
 
 const SESI_ICON = { PAGI: Sunrise, SIANG: Sun, SORE: Sunset } as const
 const SESI_LABEL = { PAGI: 'Pagi', SIANG: 'Siang', SORE: 'Sore' } as const
+const SESI_ORDER: Sesi[] = ['PAGI', 'SIANG', 'SORE']
 
 // Simplified mode. Groups by name (rows here don't carry a bare
 // jemaatId — only the embedded jemaat object — and duplicate names
@@ -75,6 +97,11 @@ const SESI_LABEL = { PAGI: 'Pagi', SIANG: 'Siang', SORE: 'Sore' } as const
 // tanggal-desc, so "first seen wins"), which is what caps it at up to
 // 3 entries and matches "only sessions that actually have a liturgi" —
 // jemaat/sessions with nothing uploaded yet just don't appear at all.
+// (This is deliberately NOT date-anchored — it's "most recent ever",
+// which is a different question from Ringkasan's "this specific week".
+// That's exactly why Ringkasan stayed a separate mode instead of folding
+// in here: conflating the two would make the dots quietly mean two
+// different things depending on a sub-toggle.)
 interface JemaatGroup {
   name: string
   category: string | null
@@ -139,18 +166,126 @@ async function load(reset: boolean) {
   loadingMore.value = false
 }
 
-async function onDaerahChange() {
+async function onDaerahSelect(d: string) {
+  daerah.value = d
+  filterOpen.value = false
+  if (showRingkasan.value) return // Ringkasan filters its own already-loaded jemaatList client-side
   await load(true)
 }
 
 async function toggleTrash() {
   showTrash.value = !showTrash.value
+  if (showTrash.value) showRingkasan.value = false
   await load(true)
 }
 
+// ── Ringkasan: this week's 3 sessions, per jemaat, at a glance ──
+// Folded in from the old standalone Overview page/route — same job
+// (which jemaat still needs this week's liturgi), but as a mode within
+// this page instead of a second destination, since the two ended up
+// showing near-identical jemaat+status information anyway. Deliberately
+// its own state (selectedDate-scoped), not reusing groupedByJemaat above,
+// because that one shows "most recent ever" — a genuinely different
+// question from "this specific week".
+interface SlotInfo {
+  id: string
+  status: 'DRAFT' | 'PUBLISHED'
+  fileUrl: string
+}
+const selectedDate = ref<string>(nearestSundayIso())
+const slotsByJemaat = ref(new Map<string, Partial<Record<Sesi, SlotInfo>>>())
+const ringkasanLoading = ref(false)
+const deletingSlot = ref<string | null>(null)
+
+const selectedDateLabel = computed(() =>
+  new Date(selectedDate.value + 'T00:00:00').toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }),
+)
+function shiftWeek(delta: number) {
+  const d = new Date(selectedDate.value + 'T00:00:00')
+  d.setDate(d.getDate() + delta * 7)
+  selectedDate.value = toIsoDate(d)
+}
+
+async function loadSlots() {
+  ringkasanLoading.value = true
+  const { data } = await supabase
+    .from('liturgi')
+    .select('id, jemaatId, sesi, status, fileUrl')
+    .eq('tanggal', selectedDate.value)
+    .is('deletedAt', null) // a soft-deleted slot should read as open again, not still "filled"
+
+  const map = new Map<string, Partial<Record<Sesi, SlotInfo>>>()
+  for (const row of data ?? []) {
+    const entry = map.get(row.jemaatId) ?? {}
+    entry[row.sesi as Sesi] = { id: row.id, status: row.status, fileUrl: row.fileUrl }
+    map.set(row.jemaatId, entry)
+  }
+  slotsByJemaat.value = map
+  ringkasanLoading.value = false
+}
+
+function jemaatStatus(id: string): 'kosong' | 'draf' | 'terbit' {
+  const slots = slotsByJemaat.value.get(id)
+  if (!slots || !Object.keys(slots).length) return 'kosong'
+  return Object.values(slots).some((s) => s?.status === 'PUBLISHED') ? 'terbit' : 'draf'
+}
+
+async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
+  if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah.`)) return
+  deletingSlot.value = slot.id
+  actionError.value = null
+  try {
+    const { error } = await supabase.from('liturgi').update({ deletedAt: new Date().toISOString() }).eq('id', slot.id)
+    if (error) throw error
+    await loadSlots()
+  } catch (err) {
+    actionError.value = err instanceof Error ? `Gagal menghapus: ${err.message}` : 'Gagal menghapus.'
+  } finally {
+    deletingSlot.value = null
+  }
+}
+
+async function toggleRingkasan() {
+  showRingkasan.value = !showRingkasan.value
+  if (showRingkasan.value) {
+    showTrash.value = false
+    await loadSlots()
+  }
+}
+
+// Ringkasan reuses the same `daerah` + `query` state as the normal list —
+// grouped by category, filtered client-side against jemaatList (fetched
+// once on mount, not re-fetched per mode).
+interface DaerahGroup {
+  name: string
+  jemaat: JemaatRecord[]
+}
+const ringkasanGroups = computed<DaerahGroup[]>(() => {
+  const q = query.value.trim().toLowerCase()
+  const filtered = jemaatList.value.filter((j) => {
+    if (daerah.value !== 'Semua' && j.category !== daerah.value) return false
+    if (q && !j.name.toLowerCase().includes(q)) return false
+    return true
+  })
+  const map = new Map<string, JemaatRecord[]>()
+  for (const j of filtered) {
+    const key = j.category ?? 'Lainnya'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(j)
+  }
+  return Array.from(map.entries())
+    .map(([name, jemaat]) => ({ name, jemaat: jemaat.sort((a, b) => a.name.localeCompare(b.name)) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
 onMounted(async () => {
-  const jemaat = await fetchAllJemaat()
-  const set = new Set(jemaat.map((j) => j.category).filter((c): c is string => !!c))
+  jemaatList.value = await fetchAllJemaat()
+  const set = new Set(jemaatList.value.map((j) => j.category).filter((c): c is string => !!c))
   daerahList.value = ['Semua', ...Array.from(set).sort()]
   await load(true)
 })
@@ -264,35 +399,59 @@ async function bulkDelete() {
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p class="label-eyebrow text-accent">Admin</p>
-          <h1 class="font-display text-2xl font-semibold text-ink">{{ showTrash ? 'Sampah' : 'Semua Liturgi' }}</h1>
-          <p v-if="!loading" class="mt-0.5 text-xs text-muted">
+          <h1 class="font-display text-2xl font-semibold text-ink">
+            {{ showTrash ? 'Sampah' : showRingkasan ? 'Ringkasan Mingguan' : 'Semua Liturgi' }}
+          </h1>
+          <p v-if="showRingkasan" class="mt-0.5 text-xs text-muted">{{ selectedDateLabel }}</p>
+          <p v-else-if="!loading" class="mt-0.5 text-xs text-muted">
             {{ total }} berkas{{ daerah !== 'Semua' ? ` · ${daerah}` : '' }}
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <button class="btn gap-1.5" @click="toggleTrash">
-            <component :is="showTrash ? ArrowLeft : Trash2" class="h-4 w-4" />
-            {{ showTrash ? 'Kembali' : 'Sampah' }}
+          <button class="btn gap-1.5" :title="showRingkasan ? 'Kembali' : 'Ringkasan mingguan lintas jemaat'" @click="toggleRingkasan">
+            <component :is="showRingkasan ? ArrowLeft : LayoutDashboard" class="h-4 w-4" />
+            <span v-if="!compact">{{ showRingkasan ? 'Kembali' : 'Ringkasan' }}</span>
           </button>
-          <RouterLink v-if="!showTrash" to="/upload" class="btn-primary gap-1.5">
-            <Plus class="h-4 w-4" /> Upload Liturgi
+          <button v-if="!showRingkasan" class="btn gap-1.5" :title="showTrash ? 'Kembali' : 'Sampah'" @click="toggleTrash">
+            <component :is="showTrash ? ArrowLeft : Trash2" class="h-4 w-4" />
+            <span v-if="!compact">{{ showTrash ? 'Kembali' : 'Sampah' }}</span>
+          </button>
+          <RouterLink v-if="!showTrash && !showRingkasan" to="/upload" class="btn-primary gap-1.5" title="Upload Liturgi">
+            <Plus class="h-4 w-4" /> <span v-if="!compact">Upload Liturgi</span>
           </RouterLink>
         </div>
       </div>
 
-      <!-- toolbar: search + custom-chevron select, side by side on wider screens -->
+      <!-- toolbar: search + icon-group daerah filter -->
       <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <div class="relative flex-1">
           <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <input v-model="query" type="text" placeholder="Cari nama jemaat…" class="input pl-9" />
         </div>
-        <div v-if="daerahList.length > 2" class="relative shrink-0">
-          <select v-model="daerah" class="input w-full appearance-none pr-8 sm:w-auto" @change="onDaerahChange">
-            <option v-for="d in daerahList" :key="d" :value="d">
+
+        <div v-if="daerahList.length > 2" ref="filterRootEl" class="relative shrink-0">
+          <button
+            type="button"
+            class="btn gap-1.5"
+            :class="daerah !== 'Semua' && 'border-accent-line bg-accent-soft text-accent'"
+            :title="daerah === 'Semua' ? 'Filter daerah' : `Daerah: ${daerah}`"
+            @click="filterOpen = !filterOpen"
+          >
+            <Filter class="h-4 w-4" />
+            <span v-if="!compact">{{ daerah === 'Semua' ? 'Filter' : daerah }}</span>
+          </button>
+          <div v-if="filterOpen" class="card absolute right-0 z-20 mt-1.5 w-44 flex-wrap gap-1 p-2">
+            <button
+              v-for="d in daerahList"
+              :key="d"
+              type="button"
+              class="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors"
+              :class="d === daerah ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-paper-deep/70'"
+              @click="onDaerahSelect(d)"
+            >
               {{ d === 'Semua' ? 'Semua Daerah' : d }}
-            </option>
-          </select>
-          <ChevronDown class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -300,210 +459,298 @@ async function bulkDelete() {
         {{ actionError }}
       </p>
 
-      <p v-if="loading" class="py-10 text-center text-sm text-muted">Memuat…</p>
-
-      <template v-else>
-        <!-- Simplified: one row per jemaat, sessions hidden until hover.
-             Bulk-select stays a Normal-mode-only tool — grouped rows don't
-             map cleanly onto "select these exact liturgi rows". Never used
-             in Sampah — restore/hapus-permanen need per-row visibility,
-             not a hover-to-reveal group. -->
-        <ul v-if="simplifiedView && !showTrash" class="card divide-y divide-line p-0">
-          <li
-            v-for="group in groupedByJemaat"
-            :key="group.name"
-            class="group/row px-4 py-3"
-          >
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-sm font-medium text-ink">{{ group.name }}</span>
-              <span class="text-xs text-muted">{{ group.entries.length }} sesi</span>
-            </div>
-
-            <!-- hidden by default; height/opacity transition on row hover -->
-            <ul
-              class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100"
-            >
-              <li
-                v-for="entry in group.entries"
-                :key="entry.id"
-                class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40"
-              >
-                <span class="flex items-center gap-1.5 text-muted">
-                  <span
-                    class="h-1.5 w-1.5 rounded-full"
-                    :class="entry.status === 'PUBLISHED' ? 'bg-accent' : 'bg-line'"
-                  />
-                  <component :is="SESI_ICON[entry.sesi]" class="h-3 w-3" />
-                  {{ SESI_LABEL[entry.sesi] }} · {{ formatTanggal(entry.tanggal) }}
-                </span>
-                <span class="flex items-center gap-0.5">
-                  <RouterLink
-                    :to="`/liturgi/${entry.id}/edit`"
-                    class="rounded p-1 text-accent hover:bg-accent-soft"
-                    title="Edit"
-                  >
-                    <Pencil class="h-3 w-3" />
-                  </RouterLink>
-                  <button
-                    type="button"
-                    class="rounded p-1 text-danger hover:bg-danger/10"
-                    title="Hapus"
-                    @click="remove(entry)"
-                  >
-                    <Trash2 class="h-3 w-3" />
-                  </button>
-                </span>
-              </li>
-            </ul>
-          </li>
-
-          <li v-if="!groupedByJemaat.length" class="px-4 py-10 text-center text-sm text-muted">
-            <template v-if="query">Tidak ada liturgi yang cocok dengan "{{ query }}".</template>
-            <template v-else>
-              Belum ada liturgi{{ daerah !== 'Semua' ? ` di ${daerah}` : '' }}.
-              <RouterLink to="/upload" class="text-accent hover:underline">Upload yang pertama</RouterLink>.
-            </template>
-          </li>
-        </ul>
-
-        <!-- Normal: the original flat, one-row-per-liturgi ledger. Also
-             what Sampah uses (no grouped/simplified view there). -->
-        <template v-else>
-        <!-- select-all + bulk action bar — Normal mode only, not shown in
-             Sampah (no bulk restore/hapus-permanen yet, keep it simple). -->
-        <div v-if="!showTrash" class="flex items-center justify-between gap-3">
-          <label class="flex items-center gap-2 text-xs text-muted">
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5 rounded border-line accent-accent"
-              :checked="allVisibleSelected"
-              :disabled="!visibleRows.length"
-              @change="toggleSelectAllVisible"
-            />
-            Pilih semua
-          </label>
-
-          <div v-if="selected.size" class="flex items-center gap-2">
-            <span class="text-xs text-muted">{{ selected.size }} dipilih</span>
-            <button class="btn-ghost !px-2 text-muted" title="Batalkan pilihan" @click="selected.clear()">
-              <X class="h-3.5 w-3.5" />
-            </button>
-            <button class="btn-danger gap-1.5" :disabled="bulkDeleting" @click="bulkDelete">
-              <Loader2 v-if="bulkDeleting" class="h-3.5 w-3.5 animate-spin" />
-              <Trash2 v-else class="h-3.5 w-3.5" />
-              {{ bulkDeleting ? 'Menghapus…' : `Hapus ${selected.size}` }}
-            </button>
-          </div>
-        </div>
-        <p v-else class="text-xs text-muted">Liturgi yang dihapus tersimpan di sini sampai dipulihkan atau dihapus permanen.</p>
-
-        <!-- ledger-style rows: a left rule colored by publish status carries the
-             status at a glance, before you even read the pill — like a register -->
-        <ul class="card divide-y divide-line p-0">
-          <li
-            v-for="row in visibleRows"
-            :key="row.id"
-            class="group flex items-center gap-3 border-l-[3px] py-3 pl-3.5 pr-3 transition-colors hover:bg-accent-soft/30"
-            :class="[
-              row.status === 'PUBLISHED' ? 'border-l-accent' : 'border-l-line',
-              selected.has(row.id) ? 'bg-accent-soft/40' : '',
-            ]"
-          >
-            <input
-              v-if="!showTrash"
-              type="checkbox"
-              class="h-3.5 w-3.5 shrink-0 rounded border-line accent-accent"
-              :checked="selected.has(row.id)"
-              @change="toggleRow(row.id)"
-            />
-
-            <component
-              :is="row.fileType === 'PDF' ? FileText : FileType2"
-              class="h-4 w-4 shrink-0 text-muted"
-            />
-
-            <!-- Sampah rows aren't editable (they're deleted) — plain text
-                 instead of a RouterLink into the edit form. -->
-            <component :is="showTrash ? 'div' : RouterLink" :to="showTrash ? undefined : `/liturgi/${row.id}/edit`" class="min-w-0 flex-1">
-              <p class="flex items-center gap-1.5 truncate text-sm font-medium text-ink group-hover:text-accent">
-                <span
-                  v-if="liturgicalTint(row.warnaLiturgi)"
-                  class="h-2 w-2 shrink-0 rounded-full"
-                  :class="liturgicalTint(row.warnaLiturgi)!.dot"
-                  :title="`Warna Liturgi: ${liturgicalTint(row.warnaLiturgi)!.label}`"
-                />
-                {{ row.jemaat?.name }}
-              </p>
-              <p class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted">
-                <span>{{ formatTanggal(row.tanggal) }}</span>
-                <span class="inline-flex items-center gap-0.5">
-                  <component :is="SESI_ICON[row.sesi]" class="h-3 w-3" />
-                  {{ SESI_LABEL[row.sesi] }}
-                </span>
-                <span v-if="row.jemaat?.category">· {{ row.jemaat.category }}</span>
-                <span v-if="showTrash && row.deletedAt">· dihapus {{ formatTanggal(row.deletedAt) }}</span>
-              </p>
-            </component>
-
-            <!-- Normal mode: publish toggle + soft-delete -->
-            <template v-if="!showTrash">
-              <button
-                class="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
-                :class="row.status === 'PUBLISHED' ? 'bg-accent-soft text-accent' : 'bg-line/70 text-muted'"
-                :title="row.status === 'PUBLISHED' ? 'Terbit — klik untuk jadikan draf' : 'Draf — klik untuk terbitkan'"
-                @click="togglePublish(row)"
-              >
-                <component :is="row.status === 'PUBLISHED' ? CheckCircle2 : Circle" class="h-3 w-3" />
-                {{ row.status === 'PUBLISHED' ? 'Terbit' : 'Draf' }}
-              </button>
-
-              <button
-                class="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
-                title="Hapus liturgi"
-                aria-label="Hapus liturgi"
-                @click="remove(row)"
-              >
-                <Trash2 class="h-4 w-4" />
-              </button>
-            </template>
-
-            <!-- Sampah mode: restore, or delete forever -->
-            <template v-else>
-              <button
-                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-line"
-                title="Pulihkan liturgi ini"
-                @click="restore(row)"
-              >
-                <RotateCcw class="h-3 w-3" /> Pulihkan
-              </button>
-
-              <button
-                class="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
-                title="Hapus permanen — tidak bisa dibatalkan"
-                aria-label="Hapus permanen"
-                @click="permanentDelete(row)"
-              >
-                <Trash2 class="h-4 w-4" />
-              </button>
-            </template>
-          </li>
-
-          <li v-if="!visibleRows.length" class="px-4 py-10 text-center text-sm text-muted">
-            <template v-if="showTrash">Sampah kosong.</template>
-            <template v-else-if="query">Tidak ada liturgi yang cocok dengan "{{ query }}".</template>
-            <template v-else>
-              Belum ada liturgi{{ daerah !== 'Semua' ? ` di ${daerah}` : '' }}.
-              <RouterLink to="/upload" class="text-accent hover:underline">Upload yang pertama</RouterLink>.
-            </template>
-          </li>
-        </ul>
-        </template>
-
-        <div v-if="hasMore" class="flex justify-center pt-1">
-          <button class="btn" :disabled="loadingMore" @click="load(false)">
-            {{ loadingMore ? 'Memuat…' : `Muat lebih banyak (${rows.length}/${total})` }}
+      <!-- ═══ Ringkasan mode ═══ -->
+      <template v-if="showRingkasan">
+        <div class="flex items-center justify-center gap-3 rounded-2xl border border-line bg-paper px-4 py-2.5">
+          <button class="btn-ghost !px-2" aria-label="Minggu sebelumnya" @click="shiftWeek(-1)">
+            <ChevronLeft class="h-4 w-4" />
+          </button>
+          <div class="text-sm font-medium text-ink">{{ selectedDateLabel }}</div>
+          <button class="btn-ghost !px-2" aria-label="Minggu berikutnya" @click="shiftWeek(1)">
+            <ChevronRight class="h-4 w-4" />
           </button>
         </div>
+
+        <p v-if="ringkasanLoading" class="py-10 text-center text-sm text-muted">Memuat…</p>
+        <div v-else class="space-y-5">
+          <div v-for="group in ringkasanGroups" :key="group.name">
+            <p class="label-eyebrow mb-1.5">{{ group.name }}</p>
+            <ul class="card divide-y divide-line p-0">
+              <li v-for="j in group.jemaat" :key="j.id" class="group/row px-3.5 py-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-sm font-medium text-ink">{{ j.name }}</span>
+                  <span
+                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="{
+                      'bg-accent-soft text-accent': jemaatStatus(j.id) === 'terbit',
+                      'bg-gold-soft text-gold': jemaatStatus(j.id) === 'draf',
+                      'bg-line/60 text-muted': jemaatStatus(j.id) === 'kosong',
+                    }"
+                  >
+                    {{ jemaatStatus(j.id) === 'terbit' ? 'Terbit' : jemaatStatus(j.id) === 'draf' ? 'Draf' : 'Kosong' }}
+                  </span>
+                </div>
+                <ul class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100">
+                  <li v-for="s in SESI_ORDER" :key="s" class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40">
+                    <span class="flex items-center gap-1.5 text-muted">
+                      <component :is="SESI_ICON[s]" class="h-3 w-3" /> {{ SESI_LABEL[s] }}
+                    </span>
+                    <span class="flex items-center gap-0.5">
+                      <template v-if="slotsByJemaat.get(j.id)?.[s]">
+                        <RouterLink :to="`/liturgi/${slotsByJemaat.get(j.id)![s]!.id}/edit`" class="rounded p-1 text-accent hover:bg-accent-soft" title="Edit">
+                          <Pencil class="h-3 w-3" />
+                        </RouterLink>
+                        <button
+                          type="button"
+                          class="rounded p-1 text-danger hover:bg-danger/10 disabled:opacity-50"
+                          title="Hapus"
+                          :disabled="deletingSlot === slotsByJemaat.get(j.id)![s]!.id"
+                          @click="deleteSlot(j.name, s, slotsByJemaat.get(j.id)![s]!)"
+                        >
+                          <Trash2 class="h-3 w-3" />
+                        </button>
+                      </template>
+                      <RouterLink
+                        v-else
+                        :to="{ path: '/upload', query: { jemaatId: j.id, tanggal: selectedDate, sesi: s } }"
+                        class="rounded p-1 text-muted hover:bg-accent-soft hover:text-accent"
+                        title="Upload"
+                      >
+                        <Plus class="h-3 w-3" />
+                      </RouterLink>
+                    </span>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+          <p v-if="!ringkasanGroups.length" class="py-10 text-center text-sm text-muted">Gak ada jemaat yang cocok.</p>
+        </div>
+      </template>
+
+      <!-- ═══ Normal / Simplified / Sampah ═══ -->
+      <template v-else>
+        <p v-if="loading" class="py-10 text-center text-sm text-muted">Memuat…</p>
+
+        <template v-else>
+          <!-- Simplified: grouped by jemaat, status dots visible without hover -->
+          <ul v-if="simplifiedView && !showTrash" class="card divide-y divide-line p-0">
+            <li
+              v-for="group in groupedByJemaat"
+              :key="group.name"
+              class="group/row px-3.5 py-2.5"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-medium text-ink">{{ group.name }}</span>
+                <span class="flex items-center gap-1">
+                  <span
+                    v-for="s in SESI_ORDER"
+                    :key="s"
+                    class="h-2 w-2 rounded-full"
+                    :class="
+                      group.entries.find((e) => e.sesi === s)?.status === 'PUBLISHED'
+                        ? 'bg-accent'
+                        : group.entries.some((e) => e.sesi === s)
+                          ? 'bg-gold'
+                          : 'bg-line'
+                    "
+                    :title="`${SESI_LABEL[s]}: ${
+                      group.entries.find((e) => e.sesi === s)?.status === 'PUBLISHED'
+                        ? 'Terbit'
+                        : group.entries.some((e) => e.sesi === s)
+                          ? 'Draf'
+                          : 'Belum ada'
+                    }`"
+                  />
+                </span>
+              </div>
+
+              <!-- hidden by default; height/opacity transition on row hover -->
+              <ul
+                class="mt-0 max-h-0 space-y-0.5 overflow-hidden opacity-0 transition-all duration-150 group-hover/row:mt-2 group-hover/row:max-h-32 group-hover/row:opacity-100"
+              >
+                <li
+                  v-for="entry in group.entries"
+                  :key="entry.id"
+                  class="flex items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-1.5 text-xs hover:bg-accent-soft/40"
+                >
+                  <span class="flex items-center gap-1.5 text-muted">
+                    <span
+                      class="h-1.5 w-1.5 rounded-full"
+                      :class="entry.status === 'PUBLISHED' ? 'bg-accent' : 'bg-line'"
+                    />
+                    <component :is="SESI_ICON[entry.sesi]" class="h-3 w-3" />
+                    {{ SESI_LABEL[entry.sesi] }} · {{ formatTanggal(entry.tanggal) }}
+                  </span>
+                  <span class="flex items-center gap-0.5">
+                    <RouterLink
+                      :to="`/liturgi/${entry.id}/edit`"
+                      class="rounded p-1 text-accent hover:bg-accent-soft"
+                      title="Edit"
+                    >
+                      <Pencil class="h-3 w-3" />
+                    </RouterLink>
+                    <button
+                      type="button"
+                      class="rounded p-1 text-danger hover:bg-danger/10"
+                      title="Hapus"
+                      @click="remove(entry)"
+                    >
+                      <Trash2 class="h-3 w-3" />
+                    </button>
+                  </span>
+                </li>
+              </ul>
+            </li>
+
+            <li v-if="!groupedByJemaat.length" class="px-4 py-10 text-center text-sm text-muted">
+              <template v-if="query">Tidak ada liturgi yang cocok dengan "{{ query }}".</template>
+              <template v-else>
+                Belum ada liturgi{{ daerah !== 'Semua' ? ` di ${daerah}` : '' }}.
+                <RouterLink to="/upload" class="text-accent hover:underline">Upload yang pertama</RouterLink>.
+              </template>
+            </li>
+          </ul>
+
+          <!-- Normal: the original flat, one-row-per-liturgi ledger. Also
+               what Sampah uses (no grouped/simplified view there). -->
+          <template v-else>
+          <!-- select-all + bulk action bar — Normal mode only, not shown in
+               Sampah (no bulk restore/hapus-permanen yet, keep it simple). -->
+          <div v-if="!showTrash" class="flex items-center justify-between gap-3">
+            <label class="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5 rounded border-line accent-accent"
+                :checked="allVisibleSelected"
+                :disabled="!visibleRows.length"
+                @change="toggleSelectAllVisible"
+              />
+              Pilih semua
+            </label>
+
+            <div v-if="selected.size" class="flex items-center gap-2">
+              <span class="text-xs text-muted">{{ selected.size }} dipilih</span>
+              <button class="btn-ghost !px-2 text-muted" title="Batalkan pilihan" @click="selected.clear()">
+                <X class="h-3.5 w-3.5" />
+              </button>
+              <button class="btn-danger gap-1.5" :disabled="bulkDeleting" :title="`Hapus ${selected.size}`" @click="bulkDelete">
+                <Loader2 v-if="bulkDeleting" class="h-3.5 w-3.5 animate-spin" />
+                <Trash2 v-else class="h-3.5 w-3.5" />
+                <span v-if="!compact">{{ bulkDeleting ? 'Menghapus…' : `Hapus ${selected.size}` }}</span>
+              </button>
+            </div>
+          </div>
+          <p v-else class="text-xs text-muted">Liturgi yang dihapus tersimpan di sini sampai dipulihkan atau dihapus permanen.</p>
+
+          <!-- ledger-style rows: a left rule colored by publish status carries the
+               status at a glance, before you even read the pill — like a register -->
+          <ul class="card divide-y divide-line p-0">
+            <li
+              v-for="row in visibleRows"
+              :key="row.id"
+              class="group flex items-center gap-3 border-l-[3px] py-3 pl-3.5 pr-3 transition-colors hover:bg-accent-soft/30"
+              :class="[
+                row.status === 'PUBLISHED' ? 'border-l-accent' : 'border-l-line',
+                selected.has(row.id) ? 'bg-accent-soft/40' : '',
+              ]"
+            >
+              <input
+                v-if="!showTrash"
+                type="checkbox"
+                class="h-3.5 w-3.5 shrink-0 rounded border-line accent-accent"
+                :checked="selected.has(row.id)"
+                @change="toggleRow(row.id)"
+              />
+
+              <component
+                :is="row.fileType === 'PDF' ? FileText : FileType2"
+                class="h-4 w-4 shrink-0 text-muted"
+              />
+
+              <!-- Sampah rows aren't editable (they're deleted) — plain text
+                   instead of a RouterLink into the edit form. -->
+              <component :is="showTrash ? 'div' : RouterLink" :to="showTrash ? undefined : `/liturgi/${row.id}/edit`" class="min-w-0 flex-1">
+                <p class="flex items-center gap-1.5 truncate text-sm font-medium text-ink group-hover:text-accent">
+                  <span
+                    v-if="liturgicalTint(row.warnaLiturgi)"
+                    class="h-2 w-2 shrink-0 rounded-full"
+                    :class="liturgicalTint(row.warnaLiturgi)!.dot"
+                    :title="`Warna Liturgi: ${liturgicalTint(row.warnaLiturgi)!.label}`"
+                  />
+                  {{ row.jemaat?.name }}
+                </p>
+                <p class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted">
+                  <span>{{ formatTanggal(row.tanggal) }}</span>
+                  <span class="inline-flex items-center gap-0.5">
+                    <component :is="SESI_ICON[row.sesi]" class="h-3 w-3" />
+                    {{ SESI_LABEL[row.sesi] }}
+                  </span>
+                  <span v-if="row.jemaat?.category">· {{ row.jemaat.category }}</span>
+                  <span v-if="showTrash && row.deletedAt">· dihapus {{ formatTanggal(row.deletedAt) }}</span>
+                </p>
+              </component>
+
+              <!-- Normal mode: publish toggle + soft-delete -->
+              <template v-if="!showTrash">
+                <button
+                  class="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
+                  :class="row.status === 'PUBLISHED' ? 'bg-accent-soft text-accent' : 'bg-line/70 text-muted'"
+                  :title="row.status === 'PUBLISHED' ? 'Terbit — klik untuk jadikan draf' : 'Draf — klik untuk terbitkan'"
+                  @click="togglePublish(row)"
+                >
+                  <component :is="row.status === 'PUBLISHED' ? CheckCircle2 : Circle" class="h-3 w-3" />
+                  <span v-if="!compact">{{ row.status === 'PUBLISHED' ? 'Terbit' : 'Draf' }}</span>
+                </button>
+
+                <button
+                  class="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                  title="Hapus liturgi"
+                  aria-label="Hapus liturgi"
+                  @click="remove(row)"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </button>
+              </template>
+
+              <!-- Sampah mode: restore, or delete forever -->
+              <template v-else>
+                <button
+                  class="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-line"
+                  title="Pulihkan liturgi ini"
+                  @click="restore(row)"
+                >
+                  <RotateCcw class="h-3 w-3" /> <span v-if="!compact">Pulihkan</span>
+                </button>
+
+                <button
+                  class="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                  title="Hapus permanen — tidak bisa dibatalkan"
+                  aria-label="Hapus permanen"
+                  @click="permanentDelete(row)"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </button>
+              </template>
+            </li>
+
+            <li v-if="!visibleRows.length" class="px-4 py-10 text-center text-sm text-muted">
+              <template v-if="showTrash">Sampah kosong.</template>
+              <template v-else-if="query">Tidak ada liturgi yang cocok dengan "{{ query }}".</template>
+              <template v-else>
+                Belum ada liturgi{{ daerah !== 'Semua' ? ` di ${daerah}` : '' }}.
+                <RouterLink to="/upload" class="text-accent hover:underline">Upload yang pertama</RouterLink>.
+              </template>
+            </li>
+          </ul>
+          </template>
+
+          <div v-if="hasMore" class="flex justify-center pt-1">
+            <button class="btn" :disabled="loadingMore" @click="load(false)">
+              {{ loadingMore ? 'Memuat…' : `Muat lebih banyak (${rows.length}/${total})` }}
+            </button>
+          </div>
+        </template>
       </template>
     </div>
   </AdminShell>

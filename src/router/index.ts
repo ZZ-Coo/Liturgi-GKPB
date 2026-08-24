@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 
 const adminRoutes = [
   { path: '/login', name: 'admin-login', component: () => import('@/views/admin/LoginView.vue') },
-  { path: '/', name: 'admin-liturgi-list', component: () => import('@/views/admin/LiturgiListView.vue'), meta: { requiresAuth: true } },
+  { path: '/', name: 'admin-liturgi-list', component: () => import('@/views/admin/AdminHomeView.vue'), meta: { requiresAuth: true } },
   { path: '/upload', name: 'admin-liturgi-upload', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
   { path: '/liturgi/:id/edit', name: 'admin-liturgi-edit', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
 ]

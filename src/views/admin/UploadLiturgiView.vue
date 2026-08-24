@@ -7,22 +7,27 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { extractStoragePath } from '@/lib/storage'
+import { toIsoDate } from '@/lib/date'
 import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { scanFileCover, matchPendeta, matchJemaat } from '@/lib/scan-cover'
 import { useAuthStore } from '@/stores/authStore'
 import AdminShell from '@/components/admin/AdminShell.vue'
+import Combobox, { type ComboboxOption } from '@/components/admin/Combobox.vue'
 import {
   CalendarDays,
   BookOpenText,
   UploadCloud,
   Radio,
   ChevronDown,
+  ChevronRight,
   AlertTriangle,
   FileCheck2,
   Trash2,
   ScanLine,
   Loader2,
+  Save,
 } from 'lucide-vue-next'
+import { simplifiedView } from '@/composables/adminViewMode'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +40,14 @@ const isEdit = computed(() => !!editId)
 // the picker here means they see a correct, pre-filled form instead of a
 // full dropdown that fails with a permission error only after they submit.
 const jemaatLocked = computed(() => auth.adminRole === 'jemaat_admin')
+
+// Simplified mode collapses "Detail Ibadah" (all-optional metadata) down
+// to a single expandable row, and drops action-button text to icon-only.
+// Starts collapsed whenever Simpel is on — expands on its own once any of
+// its fields already have something in them (editing an existing liturgi
+// that has a tema/warna set shouldn't hide that from view by default).
+const compact = computed(() => simplifiedView.value)
+const detailExpanded = ref(!simplifiedView.value)
 
 // In create mode, warns if jemaat+tanggal+sesi already has a row — so a
 // forgotten date/sesi field doesn't silently overwrite someone else's
@@ -52,7 +65,7 @@ let slotCheckToken = 0
 
 const jemaatList = ref<JemaatRecord[]>([])
 const jemaatId = ref('')
-const tanggal = ref(new Date().toISOString().slice(0, 10))
+const tanggal = ref(toIsoDate(new Date()))
 const sesi = ref<'PAGI' | 'SIANG' | 'SORE'>('PAGI')
 const jamMulai = ref('')
 const mingguKe = ref('')
@@ -70,6 +83,17 @@ interface PendetaOption {
   titles: string[]
 }
 const pendetaList = ref<PendetaOption[]>([])
+
+const jemaatOptions = computed<ComboboxOption[]>(() =>
+  jemaatList.value.map((j) => ({ id: j.id, label: j.name, sublabel: j.category ?? undefined })),
+)
+const pendetaOptions = computed<ComboboxOption[]>(() =>
+  pendetaList.value.map((p) => ({
+    id: p.id,
+    label: p.name,
+    sublabel: p.titles?.length ? p.titles.join(', ') : undefined,
+  })),
+)
 
 const file = ref<File | null>(null)
 const saving = ref(false)
@@ -182,6 +206,8 @@ onMounted(async () => {
       status.value = data.status
       currentFileUrl.value = data.fileUrl
       currentFilename.value = data.originalFilename
+      // Don't hide detail this liturgi already has, even in Simpel mode.
+      if (mingguKe.value || tema.value || warnaLiturgi.value || pendetaNama.value) detailExpanded.value = true
     }
   }
 })
@@ -248,16 +274,14 @@ function onFileChange(e: Event) {
   scanNote.value = null
 }
 
-// The dropdown of seeded pendeta is a shortcut, not the source of truth —
-// picking one just pre-fills the free-text field (still editable after).
-function applyPendetaShortcut(e: Event) {
-  const select = e.target as HTMLSelectElement
-  const picked = pendetaList.value.find((p) => p.id === select.value)
+// The pendeta combobox is a shortcut, not the source of truth — picking
+// one just pre-fills the free-text field below (still editable after).
+function onPendetaSelect(id: string) {
+  pendetaId.value = id
+  const picked = pendetaList.value.find((p) => p.id === id)
   if (picked) {
     pendetaNama.value = picked.name + (picked.titles?.length ? `, ${picked.titles.join(', ')}` : '')
-    pendetaId.value = picked.id
   }
-  select.value = '' // it's a one-shot trigger, not a persistent selection
 }
 
 // Once the admin hand-edits the name, we can no longer be sure it still
@@ -417,7 +441,7 @@ async function remove() {
 
 <template>
   <AdminShell>
-    <div class="mx-auto max-w-lg space-y-6">
+    <div class="mx-auto max-w-lg space-y-6 lg:max-w-4xl">
       <div>
         <p class="label-eyebrow text-accent">Admin</p>
         <h1 class="font-display text-2xl font-semibold text-ink">{{ isEdit ? 'Edit Liturgi' : 'Upload Liturgi' }}</h1>
@@ -426,7 +450,12 @@ async function remove() {
         </p>
       </div>
 
-      <form class="space-y-4" @submit.prevent="submit">
+      <!-- Desktop: two columns — schedule + service detail on the left
+           (the bulk of the fields), file + publish status + the save
+           action on the right (what you touch last, right before Simpan).
+           Single stacked column on mobile, unchanged. -->
+      <form class="space-y-4 lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6 lg:space-y-0" @submit.prevent="submit">
+      <div class="space-y-4">
         <!-- section 1: jadwal — jemaat + tanggal + sesi, the identity of the slot -->
         <div class="field-group">
           <p class="field-group-heading">
@@ -435,12 +464,13 @@ async function remove() {
 
           <div>
             <label class="label-eyebrow mb-1 block">Jemaat</label>
-            <div class="relative">
-              <select v-model="jemaatId" class="input appearance-none pr-8" :disabled="isEdit || jemaatLocked">
-                <option v-for="j in jemaatList" :key="j.id" :value="j.id">{{ j.name }}</option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-            </div>
+            <Combobox
+              v-model="jemaatId"
+              :options="jemaatOptions"
+              :disabled="isEdit || jemaatLocked"
+              placeholder="Pilih jemaat"
+              search-placeholder="Cari jemaat…"
+            />
             <p v-if="jemaatLocked" class="mt-1 text-xs text-muted">Akun kamu cuma bisa mengelola liturgi jemaat ini.</p>
           </div>
 
@@ -485,11 +515,22 @@ async function remove() {
 
         <!-- section 2: detail ibadah — the descriptive metadata, incl. the liturgical colour -->
         <div class="field-group">
-          <p class="field-group-heading">
+          <button
+            v-if="compact"
+            type="button"
+            class="field-group-heading w-full text-left"
+            @click="detailExpanded = !detailExpanded"
+          >
+            <BookOpenText class="h-4 w-4 text-accent" /> Detail Ibadah
+            <span class="ml-auto text-xs font-normal text-muted">Opsional</span>
+            <ChevronRight class="h-3.5 w-3.5 text-muted transition-transform" :class="detailExpanded && 'rotate-90'" />
+          </button>
+          <p v-else class="field-group-heading">
             <BookOpenText class="h-4 w-4 text-accent" /> Detail Ibadah
             <span class="ml-auto text-xs font-normal text-muted">Opsional</span>
           </p>
 
+          <div v-if="detailExpanded || !compact">
           <div>
             <label class="label-eyebrow mb-1 block">Minggu ke</label>
             <input v-model="mingguKe" type="text" class="input" placeholder="Minggu X Sesudah Trinitatis" />
@@ -506,14 +547,14 @@ async function remove() {
             <!-- shortcut only — picking one just fills the text field above,
                  which stays freely editable. Not required, and no name has
                  to exist here for the text field to be saved. -->
-            <div v-if="pendetaList.length" class="relative mt-1.5">
-              <select class="input appearance-none pr-8 text-xs text-muted" @change="applyPendetaShortcut">
-                <option value="">Isi cepat dari data pendeta…</option>
-                <option v-for="p in pendetaList" :key="p.id" :value="p.id">
-                  {{ p.name }}{{ p.titles?.length ? `, ${p.titles.join(', ')}` : '' }}
-                </option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            <div v-if="pendetaList.length" class="mt-1.5">
+              <Combobox
+                :model-value="pendetaId"
+                :options="pendetaOptions"
+                placeholder="Isi cepat dari data pendeta…"
+                search-placeholder="Cari pendeta…"
+                @update:model-value="onPendetaSelect"
+              />
             </div>
           </div>
           <div>
@@ -539,8 +580,11 @@ async function remove() {
               </button>
             </div>
           </div>
+          </div>
         </div>
+      </div>
 
+      <div class="space-y-4">
         <!-- section 3: berkas -->
         <div class="field-group">
           <p class="field-group-heading">
@@ -569,11 +613,12 @@ async function remove() {
             type="button"
             class="btn w-full justify-center gap-1.5"
             :disabled="scanning"
+            :title="scanning ? 'Membaca cover…' : 'Deteksi dari Berkas'"
             @click="detectFromFile"
           >
             <Loader2 v-if="scanning" class="h-4 w-4 animate-spin" />
             <ScanLine v-else class="h-4 w-4" />
-            {{ scanning ? 'Membaca cover…' : 'Deteksi dari Berkas' }}
+            <span v-if="scanning || !compact">{{ scanning ? 'Membaca cover…' : 'Deteksi dari Berkas' }}</span>
           </button>
           <p v-if="scanNote" class="text-xs text-muted">{{ scanNote }}</p>
         </div>
@@ -615,14 +660,17 @@ async function remove() {
         <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 
         <div class="flex gap-2 pt-1">
-          <button type="submit" class="btn-primary flex-1" :disabled="saving">
-            {{ saving ? 'Menyimpan…' : 'Simpan' }}
+          <button type="submit" class="btn-primary flex-1 gap-1.5" :disabled="saving" :title="saving ? 'Menyimpan…' : 'Simpan'">
+            <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
+            <Save v-else class="h-4 w-4" />
+            <span v-if="saving || !compact">{{ saving ? 'Menyimpan…' : 'Simpan' }}</span>
           </button>
-          <button v-if="isEdit" type="button" class="btn-danger gap-1.5" @click="remove">
-            <Trash2 class="h-4 w-4" /> Hapus
+          <button v-if="isEdit" type="button" class="btn-danger gap-1.5" title="Hapus" @click="remove">
+            <Trash2 class="h-4 w-4" /> <span v-if="!compact">Hapus</span>
           </button>
         </div>
+      </div>
       </form>
     </div>
   </AdminShell>
-</template> 
+</template>

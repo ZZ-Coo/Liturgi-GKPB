@@ -43,10 +43,14 @@ watch(
 
         <div class="flex items-center gap-3">
           <!-- Normal/Simpel — a 2-segment icon pill, same sliding-pill
-               pattern as the public page's Pagi/Siang/Sore toggle, just
-               reflecting this is the admin equivalent of it: one page,
-               a view-mode switch, not a second destination to navigate to. -->
-          <div class="relative inline-flex rounded-full border border-line bg-paper p-0.5">
+               pattern as the public page's Pagi/Siang/Sore toggle. Only
+               meaningful for super_admin (a jemaat_admin's one page has
+               nothing to switch between) — and it's no longer just the
+               List page's view mode: Simpel now also collapses the
+               optional section on the Upload/Edit form and drops action
+               buttons down to icon-only everywhere, so it stays visible
+               across every admin page, not just List. -->
+          <div v-if="auth.adminRole === 'super_admin'" class="relative inline-flex rounded-full border border-line bg-paper p-0.5">
             <div
               class="absolute inset-y-0.5 w-[calc(50%-0.125rem)] rounded-full bg-accent shadow-soft transition-transform duration-200 ease-out"
               :class="simplifiedView ? 'translate-x-[calc(100%+0.25rem)]' : 'translate-x-0'"
@@ -55,7 +59,7 @@ watch(
               type="button"
               class="relative z-10 flex items-center justify-center rounded-full px-2.5 py-1.5 transition-colors"
               :class="!simplifiedView ? 'text-white' : 'text-muted hover:text-ink'"
-              title="Normal — daftar lengkap"
+              title="Normal — tampilan lengkap"
               aria-label="Tampilan normal"
               @click="simplifiedView = false"
             >
@@ -65,7 +69,7 @@ watch(
               type="button"
               class="relative z-10 flex items-center justify-center rounded-full px-2.5 py-1.5 transition-colors"
               :class="simplifiedView ? 'text-white' : 'text-muted hover:text-ink'"
-              title="Simpel — ringkas per jemaat"
+              title="Simpel — tampilan ringkas"
               aria-label="Tampilan simpel"
               @click="simplifiedView = true"
             >
