@@ -7,6 +7,7 @@ import { tenant } from '@/router'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import { toIsoDate } from '@/lib/date'
 import { Church, Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -145,6 +146,10 @@ onMounted(async () => {
       class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,transparent_65%)]"
     />
 
+    <div class="absolute right-3 top-4 z-10 sm:right-4">
+      <ThemeToggle />
+    </div>
+
     <div class="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-10 xl:max-w-7xl xl:gap-14">
       <!-- left column: back-link + letterhead card wrapped together as ONE
            grid child, matching the 2 explicit columns above — 3 loose
@@ -155,7 +160,7 @@ onMounted(async () => {
              session, what colour) lives in one solid card instead of loose
              elements floating on the gradient, so the header reads as a
              deliberate "cover page" even before any liturgi has loaded. -->
-        <div class="flex flex-col items-center gap-4 rounded-2xl border border-line bg-white px-5 py-6 text-center shadow-card sm:px-6">
+        <div class="flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface px-5 py-6 text-center shadow-card sm:px-6">
           <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-paper shadow-soft">
             <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
           </div>
@@ -223,7 +228,7 @@ onMounted(async () => {
                 <BookOpenText class="mb-1.5 h-4 w-4" :class="tint ? tint.text : 'text-accent'" />
                 <p v-if="liturgi.current.mingguKe" class="label-eyebrow" :class="tint ? tint.text : 'text-accent'">{{ liturgi.current.mingguKe }}</p>
                 <h2 class="font-display text-base font-semibold leading-snug text-ink">{{ liturgi.current.tema }}</h2>
-                <span v-if="tint" class="chip mt-2 bg-white/70" :class="tint.text">
+                <span v-if="tint" class="chip mt-2 bg-surface/70" :class="tint.text">
                   <span class="h-1.5 w-1.5 rounded-full" :class="tint.dot" />
                   Warna Liturgi: {{ tint.label }}
                 </span>

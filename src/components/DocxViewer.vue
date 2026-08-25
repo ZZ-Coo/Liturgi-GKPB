@@ -91,7 +91,7 @@ watch(() => props.url, load)
          the top in normal flow instead of floating over the content. -->
     <div
       v-if="status === 'ready'"
-      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-white px-2 py-1.5 lg:flex"
+      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-surface px-2 py-1.5 lg:flex"
     >
       <button type="button" class="toolbar-btn" title="Layar penuh" aria-label="Layar penuh" @click="toggleFullscreen">
         <Maximize2 v-if="!isFullscreen" class="h-4 w-4" />
@@ -135,7 +135,7 @@ watch(() => props.url, load)
       class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
-        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-lift backdrop-blur"
+        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-surface/95 px-2 py-1.5 shadow-lift backdrop-blur"
       >
         <button
           type="button"

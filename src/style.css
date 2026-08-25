@@ -3,8 +3,66 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Light (default) — warm paper editorial palette. RGB triplets, not
+       hex, so Tailwind's rgb(var(...) / <alpha-value>) can still resolve
+       opacity modifiers like bg-accent-soft/40 or border-line/70. */
+    --color-paper: 249 247 241;
+    --color-paper-deep: 241 238 227;
+    --color-surface: 255 255 255;
+    --color-ink: 27 33 25;
+    --color-muted: 118 124 111;
+    --color-line: 227 224 210;
+    --color-accent: 44 78 48;
+    --color-accent-hover: 33 60 37;
+    --color-accent-soft: 230 236 222;
+    --color-accent-line: 199 212 188;
+    --color-gold: 184 134 47;
+    --color-gold-soft: 243 231 206;
+    --color-danger: 150 60 44;
+    --color-liturgi-hijau: 44 107 63;
+    --color-liturgi-hijau-soft: 228 239 226;
+    --color-liturgi-ungu: 91 75 138;
+    --color-liturgi-ungu-soft: 235 231 244;
+    --color-liturgi-merah: 161 59 50;
+    --color-liturgi-merah-soft: 245 228 225;
+    --color-liturgi-putih: 168 138 46;
+    --color-liturgi-putih-soft: 244 238 220;
+    --color-liturgi-hitam: 43 43 39;
+    --color-liturgi-hitam-soft: 231 229 222;
+  }
+
+  /* Same tokens, dark values — everything downstream (bg-paper, text-ink,
+     border-line, bg-accent-soft, bg-liturgi-*-soft, …) just works once
+     `dark` lands on <html>; nothing else in the app needs to know. */
+  html.dark {
+    --color-paper: 20 21 15;
+    --color-paper-deep: 29 31 23;
+    --color-surface: 30 32 25;
+    --color-ink: 237 234 224;
+    --color-muted: 154 156 142;
+    --color-line: 51 54 43;
+    --color-accent: 111 174 114;
+    --color-accent-hover: 133 192 136;
+    --color-accent-soft: 35 54 31;
+    --color-accent-line: 62 90 58;
+    --color-gold: 217 174 92;
+    --color-gold-soft: 58 46 21;
+    --color-danger: 225 122 99;
+    --color-liturgi-hijau: 95 163 110;
+    --color-liturgi-hijau-soft: 28 46 31;
+    --color-liturgi-ungu: 156 139 209;
+    --color-liturgi-ungu-soft: 42 36 64;
+    --color-liturgi-merah: 219 122 107;
+    --color-liturgi-merah-soft: 58 33 29;
+    --color-liturgi-putih: 217 187 99;
+    --color-liturgi-putih-soft: 54 45 24;
+    --color-liturgi-hitam: 201 201 196;
+    --color-liturgi-hitam-soft: 38 38 31;
+  }
+
   body {
-    @apply bg-paper text-ink font-sans antialiased;
+    @apply bg-paper text-ink font-sans antialiased transition-colors duration-150;
     -webkit-tap-highlight-color: transparent;
   }
   h1, h2, h3 {
@@ -18,7 +76,7 @@
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line
-           bg-white px-4 py-2 text-sm font-medium text-ink transition-all
+           bg-surface px-4 py-2 text-sm font-medium text-ink transition-all
            hover:border-accent-line hover:text-accent active:scale-[0.98]
            disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100
            disabled:hover:border-line disabled:hover:text-ink;
@@ -35,17 +93,17 @@
   }
 
   .input {
-    @apply w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-sm text-ink
+    @apply w-full rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm text-ink
            placeholder:text-muted/70 transition-shadow focus:border-accent focus:outline-none
            focus:ring-2 focus:ring-accent-soft disabled:bg-paper-deep/60 disabled:text-muted;
   }
 
   .card {
-    @apply rounded-2xl border border-line bg-white p-4 shadow-card;
+    @apply rounded-2xl border border-line bg-surface p-4 shadow-card;
   }
 
   .field-group {
-    @apply space-y-4 rounded-2xl border border-line bg-white p-4 shadow-card sm:p-5;
+    @apply space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5;
   }
 
   .field-group-heading {

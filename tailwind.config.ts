@@ -1,39 +1,50 @@
 import type { Config } from 'tailwindcss'
 
+// Every semantic token below resolves through a CSS variable (see
+// style.css :root / html.dark), so existing usage across the app — bg-paper,
+// text-ink, border-line, bg-accent-soft, bg-liturgi-hijau-soft, and so on —
+// picks up dark-mode values automatically. No component needed a `dark:`
+// variant added; the tokens themselves are theme-aware.
+function withOpacity(cssVar: string) {
+  return `rgb(var(${cssVar}) / <alpha-value>)`
+}
+
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
     extend: {
       colors: {
-        paper: '#F9F7F1',
-        'paper-deep': '#F1EEE3',
-        ink: '#1B2119',
-        muted: '#767C6F',
-        line: '#E3E0D2',
+        paper: withOpacity('--color-paper'),
+        'paper-deep': withOpacity('--color-paper-deep'),
+        surface: withOpacity('--color-surface'),
+        ink: withOpacity('--color-ink'),
+        muted: withOpacity('--color-muted'),
+        line: withOpacity('--color-line'),
         accent: {
-          DEFAULT: '#2C4E30',
-          hover: '#213C25',
-          soft: '#E6ECDE',
-          line: '#C7D4BC',
+          DEFAULT: withOpacity('--color-accent'),
+          hover: withOpacity('--color-accent-hover'),
+          soft: withOpacity('--color-accent-soft'),
+          line: withOpacity('--color-accent-line'),
         },
         gold: {
-          DEFAULT: '#B8862F',
-          soft: '#F3E7CE',
+          DEFAULT: withOpacity('--color-gold'),
+          soft: withOpacity('--color-gold-soft'),
         },
-        danger: '#963C2C',
+        danger: withOpacity('--color-danger'),
         // liturgical season colours — used to tint the reading experience
         // to match the day's warnaLiturgi, so each week reads distinctly
         liturgi: {
-          hijau: '#2C6B3F',
-          'hijau-soft': '#E4EFE2',
-          ungu: '#5B4B8A',
-          'ungu-soft': '#EBE7F4',
-          merah: '#A13B32',
-          'merah-soft': '#F5E4E1',
-          putih: '#A88A2E',
-          'putih-soft': '#F4EEDC',
-          hitam: '#2B2B27',
-          'hitam-soft': '#E7E5DE',
+          hijau: withOpacity('--color-liturgi-hijau'),
+          'hijau-soft': withOpacity('--color-liturgi-hijau-soft'),
+          ungu: withOpacity('--color-liturgi-ungu'),
+          'ungu-soft': withOpacity('--color-liturgi-ungu-soft'),
+          merah: withOpacity('--color-liturgi-merah'),
+          'merah-soft': withOpacity('--color-liturgi-merah-soft'),
+          putih: withOpacity('--color-liturgi-putih'),
+          'putih-soft': withOpacity('--color-liturgi-putih-soft'),
+          hitam: withOpacity('--color-liturgi-hitam'),
+          'hitam-soft': withOpacity('--color-liturgi-hitam-soft'),
         },
       },
       fontFamily: {
@@ -41,8 +52,8 @@ export default {
         sans: ['"Plus Jakarta Sans"', 'sans-serif'],
       },
       boxShadow: {
-        soft: '0 1px 2px -1px rgba(27, 33, 25, 0.06), 0 4px 16px -8px rgba(27, 33, 25, 0.12)',
-        card: '0 2px 6px -2px rgba(27, 33, 25, 0.08), 0 10px 30px -12px rgba(27, 33, 25, 0.14)',
+        soft: '0 1px 2px -1px rgba(0, 0, 0, 0.2), 0 4px 16px -8px rgba(0, 0, 0, 0.28)',
+        card: '0 2px 6px -2px rgba(0, 0, 0, 0.22), 0 10px 30px -12px rgba(0, 0, 0, 0.32)',
         lift: '0 8px 24px -8px rgba(44, 78, 48, 0.28)',
       },
       borderRadius: {
@@ -51,4 +62,4 @@ export default {
     },
   },
   plugins: [],
-} satisfies Config
+} satisfies Configstyl

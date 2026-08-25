@@ -212,7 +212,7 @@ watch(
          (thumb-reachable), unchanged. -->
     <div
       v-if="status === 'ready'"
-      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-white px-2 py-1.5 lg:flex"
+      class="hidden shrink-0 items-center justify-center gap-0.5 border-b border-line bg-surface px-2 py-1.5 lg:flex"
     >
       <button type="button" class="toolbar-btn" title="Perkecil tampilan" aria-label="Perkecil tampilan" :disabled="zoomIndex === 0" @click="zoomOut">
         <ZoomOut class="h-4 w-4" />
@@ -279,7 +279,7 @@ watch(
       class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3 lg:hidden"
     >
       <div
-        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-white/95 px-2 py-1.5 shadow-lift backdrop-blur"
+        class="pointer-events-auto flex items-center gap-0.5 rounded-full border border-line/80 bg-surface/95 px-2 py-1.5 shadow-lift backdrop-blur"
       >
         <button
           type="button"
@@ -381,7 +381,7 @@ watch(
       class="absolute inset-0 z-10 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
       @click.self="closeGuide"
     >
-      <div class="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+      <div class="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
         <p class="mb-3 text-sm font-semibold text-ink">Cara memakai liturgi digital</p>
         <ul class="space-y-2.5 text-sm text-muted">
           <li class="flex items-start gap-2.5">

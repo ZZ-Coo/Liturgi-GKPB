@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { Church, Mail, Lock } from 'lucide-vue-next'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 
 const email = ref('')
 const password = ref('')
@@ -28,12 +29,15 @@ async function submit() {
 
 <template>
   <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-paper px-4">
+    <div class="absolute right-4 top-4">
+      <ThemeToggle />
+    </div>
     <div
       class="pointer-events-none absolute inset-x-0 -top-24 h-72 bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,transparent_65%)]"
     />
     <div class="relative w-full max-w-sm space-y-6">
       <div class="flex flex-col items-center gap-2 text-center">
-        <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-white shadow-lift">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-surface shadow-lift">
           <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
         </div>
         <div>

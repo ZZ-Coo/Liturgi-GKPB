@@ -11,6 +11,18 @@
       rel="stylesheet"
     />
     <title>Liturgi GKPB</title>
+    <script>
+      // Runs synchronously, before anything paints — this (not main.ts)
+      // is what actually prevents a light-mode flash for someone who has
+      // dark saved or whose OS is set to dark. main.ts's initTheme() also
+      // calls the equivalent logic for Vue's own reactive `isDark` state,
+      // but by then the boot-loader below would already have painted once.
+      try {
+        var stored = localStorage.getItem('liturgi-theme')
+        var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (dark) document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
     <style>
       /* Plain CSS spinner shown before Vue mounts — no JS, no animation
          library, just a transform: rotate() keyframe. That's a
@@ -32,6 +44,13 @@
         border: 3px solid #e3e0d2;
         border-top-color: #2c4e30;
         animation: boot-spin 0.7s linear infinite;
+      }
+      html.dark .boot-loader {
+        background: #14150f;
+      }
+      html.dark .boot-spinner {
+        border-color: #33362b;
+        border-top-color: #6fae72;
       }
       @keyframes boot-spin {
         to {
