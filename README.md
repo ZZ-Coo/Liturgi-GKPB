@@ -40,10 +40,16 @@ begitu domain custom + wildcard DNS siap — lihat "Mode akses" di bawah.
   lewat API tanpa login.
 - Kunci di halaman root (`RootGate`) hanya lapisan UI; perlindungan sebenarnya
   ada di DB.
-- Tulis/baca lewat tabel hanya untuk `super_admin` (RLS). Kolom
-  `admin_users.jemaat_id` dan role `jemaat_admin` sudah disiapkan; untuk
-  mengaktifkan admin per-jemaat cukup menambah klausa di policy (lihat komentar
-  "PER-JEMAAT NANTI" di `db/setup.sql`).
+- Dua peran admin: **`super_admin`** (semua jemaat, plus kelola jemaat/pendeta)
+  dan **`jemaat_admin`** (hanya jemaatnya sendiri — `admin_users.jemaat_id`).
+  RLS membatasi baris `liturgi`/`warta` dan folder di bucket (`<slug>/…`)
+  sesuai peran; `jemaat_admin` tidak bisa melihat jemaat lain sama sekali.
+- Memberi akses (jemaat_admin baru, atau menaikkan ke super_admin) sengaja
+  hanya lewat SQL Editor — lihat blok nomor 7 di `db/setup.sql`, atau salin
+  snippet-nya dari halaman **Kelola Admin** (`/admin/kelola-admin`, super admin
+  saja). Mencabut akses BISA dari halaman itu (satu klik) — `admin_users`
+  punya policy DELETE untuk super_admin (tidak bisa mencabut akunnya sendiri),
+  tapi sengaja tanpa policy INSERT/UPDATE.
 - Slug jemaat bisa ditebak: siapa pun yang tahu `/j/<slug>` bisa membuka liturgi
   yang terbit di sana. Cukup untuk sekarang; opsi berikutnya: kode acak di link.
 
@@ -77,6 +83,17 @@ npm run dev
 Cek di SQL Editor (query verify ada di bagian bawah `db/setup.sql`): tidak ada
 tabel `public` tanpa RLS, `anon` tidak punya privilege tabel, dan
 `select * from public.get_public_jemaat('hosana-kwanji')` mengembalikan 1 baris.
+
+## Admin jemaat
+
+`/admin/kelola-admin` (super admin saja) menampilkan siapa saja yang punya akses
+admin dan ke jemaat mana, dengan tombol **Cabut akses** per baris. Menambah
+admin jemaat baru masih dua langkah manual (Dashboard → Add user, lalu satu
+snippet SQL yang bisa disalin dari halaman itu) — lihat "Model keamanan" di
+atas untuk alasannya. Seorang jemaat_admin melihat tab Liturgi dan Warta yang
+sama seperti super admin, hanya saja semuanya sudah tersaring ke jemaatnya
+sendiri (RLS, bukan hanya UI) — termasuk tidak bisa memilih jemaat lain di
+formulir manapun.
 
 ## Reset database
 
@@ -153,6 +170,7 @@ db/                  setup.sql (final, idempotent), reset-public.sql
 prisma/schema.prisma tabel, kolom, enum, FK
 scripts/             seed jemaat & pendeta (+ data sumber)
 src/lib/tenant.ts    resolve jemaat/admin/root dari URL, lookup publik
+src/lib/adminUsers.ts daftar + cabut akses admin (halaman Kelola Admin)
 src/lib/warta/       tipe, penomoran, parse, money, api tabel warta, renderer, registry block
 src/components/      BrandMark (lambang), AdminQuickNav (tombol pintas), admin/ConfirmDialog, warta/*
 src/stores/          authStore (role admin), liturgiStore (baca publik via RPC)

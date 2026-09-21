@@ -8,9 +8,11 @@ const adminRoutes = [
   { path: '/', name: 'admin-liturgi-list', component: () => import('@/views/admin/AdminHomeView.vue'), meta: { requiresAuth: true } },
   { path: '/upload', name: 'admin-liturgi-upload', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
   { path: '/liturgi/:id/edit', name: 'admin-liturgi-edit', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
-  // Warta is super_admin-only for now, matching its RLS policies.
-  { path: '/warta', name: 'admin-warta-list', component: () => import('@/views/admin/WartaListView.vue'), meta: { requiresAuth: true, requiresSuperAdmin: true } },
-  { path: '/warta/:id', name: 'admin-warta-edit', component: () => import('@/views/admin/WartaEditView.vue'), meta: { requiresAuth: true, requiresSuperAdmin: true } },
+  // Warta: any admin (super_admin or jemaat_admin) — RLS scopes jemaat_admin
+  // to their own jemaat's rows the same way it already does for liturgi.
+  { path: '/warta', name: 'admin-warta-list', component: () => import('@/views/admin/WartaListView.vue'), meta: { requiresAuth: true } },
+  { path: '/warta/:id', name: 'admin-warta-edit', component: () => import('@/views/admin/WartaEditView.vue'), meta: { requiresAuth: true } },
+  { path: '/kelola-admin', name: 'admin-users', component: () => import('@/views/admin/AdminUsersView.vue'), meta: { requiresAuth: true, requiresSuperAdmin: true } },
   // Unknown admin path (e.g. "/admin/..." typed on admin.localhost, where
   // routes have no /admin prefix): go home instead of rendering a blank page.
   { path: '/:pathMatch(.*)*', redirect: '/' },

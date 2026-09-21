@@ -58,6 +58,8 @@ drop function if exists public.get_public_dates(text);
 drop function if exists public.get_public_warta(text, date);
 drop function if exists public.current_admin_role();
 drop function if exists public.current_admin_jemaat_id();
+drop function if exists public.current_admin_jemaat_slug();
+drop function if exists public.list_admin_users();
 drop function if exists public.set_updated_at();
 
 -- Cek: harus kosong untuk app ini.

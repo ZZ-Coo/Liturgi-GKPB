@@ -13,9 +13,14 @@
 --   5. fungsi baca publik per-slug  ← satu-satunya pintu masuk anon
 --   6. bucket liturgi-files + storage policy
 --
--- Model akses saat ini: hanya super_admin yang bisa baca/tulis lewat tabel.
--- Admin per-jemaat = nanti; kolom admin_users.jemaat_id sudah disiapkan,
--- tinggal tambah klausa di policy (lihat komentar "PER-JEMAAT NANTI").
+-- Model akses lewat tabel:
+--   super_admin  → semua jemaat: baca/tulis/hapus liturgi, warta, file; kelola
+--                  jemaat dan pendeta.
+--   jemaat_admin → HANYA jemaatnya sendiri (admin_users.jemaat_id): liturgi,
+--                  warta, dan file di folder <slug jemaat>/ di bucket.
+--                  Tidak bisa melihat jemaat lain, mengubah jemaat/pendeta,
+--                  atau mengubah hak akses (admin_users tanpa policy tulis).
+--   anon         → tidak ada akses tabel; hanya fungsi baca publik (bagian 5).
 -- ═══════════════════════════════════════════════════════════════════════
 
 
@@ -94,11 +99,62 @@ as $$
   select jemaat_id from public.admin_users where user_id = auth.uid()
 $$;
 
+-- Slug jemaat milik admin ini — untuk policy storage, yang mencocokkan nama
+-- folder file dengan slug. Dibuat sebagai fungsi (bukan subquery di policy)
+-- supaya tidak terkena RLS tabel jemaat dan tidak ada kolom `name` yang
+-- ambigu antara jemaat.name dan objects.name.
+create or replace function public.current_admin_jemaat_slug()
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select j.slug
+  from public.admin_users a
+  join public.jemaat j on j.id = a.jemaat_id
+  where a.user_id = auth.uid()
+$$;
+
 -- Supabase memberi EXECUTE ke anon secara default → cabut, kasih ke authenticated saja.
 revoke all on function public.current_admin_role() from public, anon;
 revoke all on function public.current_admin_jemaat_id() from public, anon;
+revoke all on function public.current_admin_jemaat_slug() from public, anon;
 grant execute on function public.current_admin_role() to authenticated;
 grant execute on function public.current_admin_jemaat_id() to authenticated;
+grant execute on function public.current_admin_jemaat_slug() to authenticated;
+
+-- List of who has admin access to what, for the "Kelola Admin" screen.
+-- SECURITY DEFINER to read auth.users.email (not otherwise exposed via the
+-- API) and to bypass admin_users' own RLS (which only lets a super_admin see
+-- ALL rows via the select policy above — this just adds the email + jemaat
+-- name/slug in one call instead of three round trips). The `where` clause
+-- does the real access check: a non-super_admin gets zero rows, not an error.
+create or replace function public.list_admin_users()
+returns table (
+  user_id uuid,
+  email text,
+  role text,
+  jemaat_id text,
+  jemaat_slug text,
+  jemaat_name text,
+  created_at timestamptz
+)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select a.user_id, u.email, a.role, a.jemaat_id, j.slug, j.name, a.created_at
+  from public.admin_users a
+  join auth.users u on u.id = a.user_id
+  left join public.jemaat j on j.id = a.jemaat_id
+  where public.current_admin_role() = 'super_admin'
+  order by (a.role = 'super_admin') desc, j.name nulls first, u.email
+$$;
+
+revoke all on function public.list_admin_users() from public, anon;
+grant execute on function public.list_admin_users() to authenticated;
 
 
 -- ── 4. GRANT + RLS ──────────────────────────────────────────────────────
@@ -122,7 +178,7 @@ $$;
 alter default privileges for role postgres in schema public revoke all on tables from anon;
 
 grant select, insert, update, delete on public.jemaat, public.pendeta, public.liturgi, public.warta to authenticated;
-grant select on public.admin_users to authenticated;
+grant select, delete on public.admin_users to authenticated; -- delete: revoke policy below; insert/update deliberately withheld
 grant all on public.jemaat, public.pendeta, public.liturgi, public.warta, public.admin_users to service_role;
 
 alter table public.admin_users enable row level security;
@@ -143,6 +199,20 @@ create policy "admin_users: super_admin reads all"
   on public.admin_users for select
   to authenticated
   using (public.current_admin_role() = 'super_admin');
+
+-- Revoking (removing) access is allowed from the client — a super_admin
+-- should be able to cut off a lost laptop or a departed secretary without
+-- reaching for the SQL Editor. GRANTING access (insert) and CHANGING a
+-- role/jemaat (update) stay SQL-Editor-only, on purpose: minting a new
+-- admin or promoting one to super_admin is a rarer, higher-stakes action
+-- where the extra friction is worth it. `user_id <> auth.uid()` blocks a
+-- super_admin from revoking their own access by accident from the UI —
+-- doing that to yourself is still possible, deliberately, via SQL Editor.
+drop policy if exists "admin_users: super_admin revokes others" on public.admin_users;
+create policy "admin_users: super_admin revokes others"
+  on public.admin_users for delete
+  to authenticated
+  using (public.current_admin_role() = 'super_admin' and user_id <> auth.uid());
 
 -- jemaat: super_admin lihat semua (daftar di root); jemaat_admin cuma jemaatnya.
 drop policy if exists "jemaat: admin reads" on public.jemaat;
@@ -172,22 +242,26 @@ create policy "pendeta: super_admin writes"
   using (public.current_admin_role() = 'super_admin')
   with check (public.current_admin_role() = 'super_admin');
 
--- liturgi & warta: super_admin penuh (baca draft + sampah, tulis, hapus).
--- PER-JEMAAT NANTI: tambahkan di using DAN with check masing-masing:
---   or public.current_admin_jemaat_id() = "jemaatId"
+-- liturgi & warta: super_admin untuk semua jemaat; jemaat_admin hanya untuk
+-- baris dengan "jemaatId" = jemaatnya (baca draf + sampah, tulis, hapus).
+-- WITH CHECK yang sama mencegah jemaat_admin membuat baris untuk jemaat lain
+-- atau "memindahkan" baris miliknya ke jemaat lain. Untuk pengguna tanpa baris
+-- admin_users, kedua fungsi mengembalikan NULL → perbandingan NULL → ditolak.
 drop policy if exists "liturgi: super_admin all" on public.liturgi;
-create policy "liturgi: super_admin all"
+drop policy if exists "liturgi: admin manages own jemaat" on public.liturgi;
+create policy "liturgi: admin manages own jemaat"
   on public.liturgi for all
   to authenticated
-  using (public.current_admin_role() = 'super_admin')
-  with check (public.current_admin_role() = 'super_admin');
+  using (public.current_admin_role() = 'super_admin' or "jemaatId" = public.current_admin_jemaat_id())
+  with check (public.current_admin_role() = 'super_admin' or "jemaatId" = public.current_admin_jemaat_id());
 
 drop policy if exists "warta: super_admin all" on public.warta;
-create policy "warta: super_admin all"
+drop policy if exists "warta: admin manages own jemaat" on public.warta;
+create policy "warta: admin manages own jemaat"
   on public.warta for all
   to authenticated
-  using (public.current_admin_role() = 'super_admin')
-  with check (public.current_admin_role() = 'super_admin');
+  using (public.current_admin_role() = 'super_admin' or "jemaatId" = public.current_admin_jemaat_id())
+  with check (public.current_admin_role() = 'super_admin' or "jemaatId" = public.current_admin_jemaat_id());
 
 
 -- ── 5. Fungsi baca publik (per-slug) ────────────────────────────────────
@@ -291,43 +365,88 @@ on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit;
 
+-- Akses file: super_admin ke semua; jemaat_admin hanya ke folder pertama =
+-- slug jemaatnya (<slug>/2026-08-23-pagi.pdf, <slug>/warta/qris.png). File di
+-- root bucket (tanpa folder) tidak bisa disentuh jemaat_admin.
 -- select ikut diperlukan: upload({ upsert: true }) butuh insert + update + select.
 drop policy if exists "liturgi-files: super_admin select" on storage.objects;
-create policy "liturgi-files: super_admin select"
+drop policy if exists "liturgi-files: super_admin insert" on storage.objects;
+drop policy if exists "liturgi-files: super_admin update" on storage.objects;
+drop policy if exists "liturgi-files: super_admin delete" on storage.objects;
+drop policy if exists "liturgi-files: admin select" on storage.objects;
+drop policy if exists "liturgi-files: admin insert" on storage.objects;
+drop policy if exists "liturgi-files: admin update" on storage.objects;
+drop policy if exists "liturgi-files: admin delete" on storage.objects;
+
+create policy "liturgi-files: admin select"
   on storage.objects for select
   to authenticated
-  using (bucket_id = 'liturgi-files' and public.current_admin_role() = 'super_admin');
+  using (
+    bucket_id = 'liturgi-files'
+    and (
+      public.current_admin_role() = 'super_admin'
+      or (storage.foldername(objects.name))[1] = public.current_admin_jemaat_slug()
+    )
+  );
 
-drop policy if exists "liturgi-files: super_admin insert" on storage.objects;
-create policy "liturgi-files: super_admin insert"
+create policy "liturgi-files: admin insert"
   on storage.objects for insert
   to authenticated
-  with check (bucket_id = 'liturgi-files' and public.current_admin_role() = 'super_admin');
+  with check (
+    bucket_id = 'liturgi-files'
+    and (
+      public.current_admin_role() = 'super_admin'
+      or (storage.foldername(objects.name))[1] = public.current_admin_jemaat_slug()
+    )
+  );
 
-drop policy if exists "liturgi-files: super_admin update" on storage.objects;
-create policy "liturgi-files: super_admin update"
+create policy "liturgi-files: admin update"
   on storage.objects for update
   to authenticated
-  using (bucket_id = 'liturgi-files' and public.current_admin_role() = 'super_admin');
+  using (
+    bucket_id = 'liturgi-files'
+    and (
+      public.current_admin_role() = 'super_admin'
+      or (storage.foldername(objects.name))[1] = public.current_admin_jemaat_slug()
+    )
+  )
+  with check (
+    bucket_id = 'liturgi-files'
+    and (
+      public.current_admin_role() = 'super_admin'
+      or (storage.foldername(objects.name))[1] = public.current_admin_jemaat_slug()
+    )
+  );
 
-drop policy if exists "liturgi-files: super_admin delete" on storage.objects;
-create policy "liturgi-files: super_admin delete"
+create policy "liturgi-files: admin delete"
   on storage.objects for delete
   to authenticated
-  using (bucket_id = 'liturgi-files' and public.current_admin_role() = 'super_admin');
+  using (
+    bucket_id = 'liturgi-files'
+    and (
+      public.current_admin_role() = 'super_admin'
+      or (storage.foldername(objects.name))[1] = public.current_admin_jemaat_slug()
+    )
+  );
 
--- PER-JEMAAT NANTI: tambahkan ke tiap policy di atas
---   or exists (
---     select 1 from public.jemaat j
---     where j.id = public.current_admin_jemaat_id()
---       and j.slug = (storage.foldername(objects.name))[1]   -- WAJIB `objects.name`, bukan `name`
---   )
 
-
--- ── 7. Jadikan dirimu super_admin (akun Auth-mu sudah ada, cukup jalankan ini) ──
+-- ── 7. Memberi akses ────────────────────────────────────────────────────
+-- Buat dulu akunnya di Dashboard → Authentication → Users (Add user), lalu:
+--
+-- Super admin (kamu):
 -- insert into public.admin_users (user_id, role)
 --   select id, 'super_admin' from auth.users where email = 'GANTI_EMAIL_KAMU'
---   on conflict (user_id) do update set role = 'super_admin';
+--   on conflict (user_id) do update set role = 'super_admin', jemaat_id = null;
+--
+-- Admin jemaat (mis. sekretaris) — hanya jemaat yang dipilih lewat slug-nya:
+-- insert into public.admin_users (user_id, role, jemaat_id)
+--   select u.id, 'jemaat_admin', j.id
+--   from auth.users u, public.jemaat j
+--   where u.email = 'GANTI_EMAIL_SEKRETARIS' and j.slug = 'hosana-kwanji'
+--   on conflict (user_id) do update set role = 'jemaat_admin', jemaat_id = excluded.jemaat_id;
+--
+-- Mencabut akses (akunnya tetap ada, tapi bukan admin lagi):
+-- delete from public.admin_users where user_id = (select id from auth.users where email = 'GANTI_EMAIL');
 
 
 -- ── Verify ──────────────────────────────────────────────────────────────

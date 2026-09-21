@@ -4,7 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { supabase } from '@/lib/supabase'
 import { simplifiedView } from '@/composables/adminViewMode'
-import { LogOut, Rows3, LayoutGrid } from 'lucide-vue-next'
+import { LogOut, Rows3, LayoutGrid, Users } from 'lucide-vue-next'
 import GlobalToast from '@/components/admin/GlobalToast.vue'
 import ConfirmDialog from '@/components/admin/ConfirmDialog.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -104,12 +104,12 @@ watch(
     </header>
 
     <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <!-- Liturgi | Warta. Only a super_admin has a Warta section (its RLS
-           policies are super_admin-only), so nobody else gets the tabs. -->
-      <nav v-if="auth.isSuperAdmin" class="mb-6 inline-flex rounded-full border border-line bg-surface p-0.5 shadow-soft" aria-label="Bagian admin">
+      <!-- Liturgi | Warta — every admin has both, scoped by RLS.
+           Kelola Admin is a fourth tab, super_admin only. -->
+      <nav class="mb-6 inline-flex items-center gap-1 rounded-full border border-line bg-surface p-0.5 shadow-soft" aria-label="Bagian admin">
         <RouterLink
           v-for="tab in [
-            { to: '/', label: 'Liturgi', active: !route.path.startsWith('/warta') },
+            { to: '/', label: 'Liturgi', active: !route.path.startsWith('/warta') && !route.path.startsWith('/kelola-admin') },
             { to: '/warta', label: 'Warta', active: route.path.startsWith('/warta') },
           ]"
           :key="tab.to"
@@ -118,6 +118,16 @@ watch(
           :class="tab.active ? 'bg-accent text-white shadow-soft' : 'text-muted hover:text-ink'"
         >
           {{ tab.label }}
+        </RouterLink>
+        <RouterLink
+          v-if="auth.isSuperAdmin"
+          to="/kelola-admin"
+          title="Kelola Admin"
+          aria-label="Kelola Admin"
+          class="rounded-full p-2 transition-colors"
+          :class="route.path.startsWith('/kelola-admin') ? 'bg-accent text-white shadow-soft' : 'text-muted hover:text-ink'"
+        >
+          <Users class="h-4 w-4" />
         </RouterLink>
       </nav>
       <slot />

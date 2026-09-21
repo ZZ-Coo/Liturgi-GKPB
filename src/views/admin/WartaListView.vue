@@ -16,8 +16,16 @@ import { upcomingSundayIso } from '@/lib/date'
 import { pushToast } from '@/composables/toast'
 import type { WartaSection } from '@/lib/warta/types'
 import { confirmTrash, confirmDestroy } from '@/composables/confirm'
+import { useAuthStore } from '@/stores/authStore'
 
 const router = useRouter()
+const auth = useAuthStore()
+
+// A jemaat_admin only ever has one jemaat — RLS already limits every query
+// to it, but the picker is narrowed too so there's nothing to see (even via
+// devtools) that isn't already true, and the filter/create controls are
+// simplified to match (nothing to filter or pick when there's only one).
+const jemaatLocked = computed(() => auth.adminRole === 'jemaat_admin')
 
 const jemaatList = ref<JemaatRecord[]>([])
 const rows = ref<WartaSummary[]>([])
@@ -58,6 +66,11 @@ async function loadRows() {
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
+  if (jemaatLocked.value && auth.adminJemaatId) {
+    jemaatList.value = jemaatList.value.filter((j) => j.id === auth.adminJemaatId)
+    filterJemaatId.value = auth.adminJemaatId
+    newJemaatId.value = auth.adminJemaatId
+  }
   await loadRows()
 })
 watch(filterJemaatId, loadRows)
@@ -183,8 +196,8 @@ async function removeForever(row: WartaSummary) {
           <button type="button" class="btn-ghost" aria-label="Tutup" @click="showCreate = false"><X class="h-4 w-4" /></button>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label class="space-y-1.5">
+        <div class="grid gap-3" :class="jemaatLocked ? '' : 'sm:grid-cols-2'">
+          <label v-if="!jemaatLocked" class="space-y-1.5">
             <span class="label-eyebrow">Jemaat</span>
             <Combobox v-model="newJemaatId" :options="jemaatOptions" placeholder="Pilih jemaat…" search-placeholder="Cari jemaat…" />
           </label>
@@ -223,8 +236,8 @@ async function removeForever(row: WartaSummary) {
         </div>
       </div>
 
-      <!-- filter -->
-      <div class="max-w-xs">
+      <!-- filter — hidden for a jemaat_admin: only one jemaat to filter by -->
+      <div v-if="!jemaatLocked" class="max-w-xs">
         <Combobox v-model="filterJemaatId" :options="filterOptions" placeholder="Semua jemaat" search-placeholder="Cari jemaat…" />
       </div>
 
