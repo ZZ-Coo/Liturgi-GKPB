@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { simplifiedView } from '@/composables/adminViewMode'
 import { pushToast } from '@/composables/toast'
 import AdminShell from '@/components/admin/AdminShell.vue'
+import { confirmTrash, confirmDestroy } from '@/composables/confirm'
 import {
   ChevronLeft,
   ChevronRight,
@@ -99,7 +100,7 @@ watch(selectedDate, loadWeek)
 
 const deletingId = ref<string | null>(null)
 async function quickDelete(s: Sesi, row: Row) {
-  if (!confirm(`Hapus liturgi ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah di bawah.`)) return
+  if (!(await confirmTrash(`liturgi ${SESI_LABEL[s]}`, 'Masih bisa dipulihkan lewat Sampah di bawah.'))) return
   deletingId.value = row.id
   actionError.value = null
   try {
@@ -187,7 +188,7 @@ async function toggleTrash() {
 }
 
 async function removeFromHistory(row: Row) {
-  if (!confirm(`Hapus liturgi ${SESI_LABEL[row.sesi]} — ${formatTanggal(row.tanggal)}? Masih bisa dipulihkan lewat Sampah.`))
+  if (!(await confirmTrash(`liturgi ${SESI_LABEL[row.sesi]} — ${formatTanggal(row.tanggal)}`)))
     return
   actionError.value = null
   const { error } = await supabase.from('liturgi').update({ deletedAt: new Date().toISOString() }).eq('id', row.id)
@@ -218,7 +219,7 @@ async function restore(row: Row) {
 }
 
 async function permanentDelete(row: Row) {
-  if (!confirm(`Hapus permanen liturgi ${SESI_LABEL[row.sesi]} — ${formatTanggal(row.tanggal)}? Tindakan ini TIDAK BISA dibatalkan.`))
+  if (!(await confirmDestroy(`liturgi ${SESI_LABEL[row.sesi]} — ${formatTanggal(row.tanggal)}`)))
     return
   actionError.value = null
   const { error } = await supabase.from('liturgi').delete().eq('id', row.id)

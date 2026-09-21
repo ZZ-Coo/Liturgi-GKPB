@@ -30,6 +30,7 @@ import {
 } from 'lucide-vue-next'
 import { simplifiedView } from '@/composables/adminViewMode'
 import { pushToast } from '@/composables/toast'
+import { askConfirm, confirmTrash } from '@/composables/confirm'
 
 const route = useRoute()
 const router = useRouter()
@@ -314,11 +315,14 @@ async function submit() {
   if (!isEdit.value) {
     await checkSlot()
     if (existingSlot.value) {
-      const ok = confirm(
-        `Slot ini sudah ada liturgi: "${existingSlot.value.originalFilename}" (${
+      const ok = await askConfirm({
+        title: 'Slot ini sudah terisi',
+        message: `Sudah ada liturgi: "${existingSlot.value.originalFilename}" (${
           existingSlot.value.status === 'PUBLISHED' ? 'Terbit' : 'Draf'
-        }).\n\nLanjut menimpa file itu?`,
-      )
+        }).\nLanjut menimpa file itu?`,
+        confirmLabel: 'Ya, timpa',
+        tone: 'danger',
+      })
       if (!ok) return
     }
   }
@@ -434,7 +438,7 @@ async function submit() {
 
 async function remove() {
   if (!editId) return
-  if (!confirm('Hapus liturgi ini? Masih bisa dipulihkan lewat Sampah di daftar liturgi.')) return
+  if (!(await confirmTrash('liturgi ini', 'Masih bisa dipulihkan lewat Sampah di daftar liturgi.'))) return
   // Soft delete — the file stays in storage untouched (restore needs it
   // back). Permanent removal (row + storage file) only happens from the
   // Sampah view in the list, as a separate, more deliberate action.

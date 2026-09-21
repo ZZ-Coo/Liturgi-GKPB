@@ -1,0 +1,47 @@
+/* Typography for warta rich text. Shared by the read-only view
+   (.warta-rich, filled via v-html) and the TipTap editor
+   (.warta-editor .ProseMirror), so what you type looks like what gets
+   published. Plain CSS because v-html content can't be reached by scoped styles. */
+/* Unscoped on purpose: the HTML comes from v-html, and the editor
+   (RichTextEditor) reuses these rules so what you type looks like what
+   gets published. */
+.warta-rich p,
+.warta-editor .ProseMirror p {
+  margin: 0;
+  text-align: justify;
+  line-height: 1.6;
+}
+.warta-rich p + p,
+.warta-editor .ProseMirror p + p {
+  margin-top: 0.35rem;
+}
+.warta-rich ol,
+.warta-editor .ProseMirror ol {
+  margin: 0.25rem 0;
+  padding-left: 1.5rem;
+  list-style: decimal;
+}
+.warta-rich li,
+.warta-editor .ProseMirror li {
+  padding-left: 0.25rem;
+}
+.warta-rich li > p,
+.warta-editor .ProseMirror li > p {
+  margin: 0;
+}
+.warta-rich li + li,
+.warta-editor .ProseMirror li + li {
+  margin-top: 0.35rem;
+}
+.warta-rich strong,
+.warta-editor .ProseMirror strong {
+  font-weight: 700;
+}
+.warta-rich em,
+.warta-editor .ProseMirror em {
+  font-style: italic;
+}
+.warta-rich u,
+.warta-editor .ProseMirror u {
+  text-decoration: underline;
+}

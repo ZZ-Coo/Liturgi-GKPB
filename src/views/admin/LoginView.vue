@@ -2,8 +2,9 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
-import { Church, Mail, Lock } from 'lucide-vue-next'
+import { Mail, Lock } from 'lucide-vue-next'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import BrandMark from '@/components/BrandMark.vue'
 
 const email = ref('')
 const password = ref('')
@@ -37,9 +38,7 @@ async function submit() {
     />
     <div class="relative w-full max-w-sm space-y-6">
       <div class="flex flex-col items-center gap-2 text-center">
-        <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-surface shadow-lift">
-          <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
-        </div>
+        <BrandMark size="lg" />
         <div>
           <p class="label-eyebrow text-accent">Admin</p>
           <h1 class="font-display text-2xl font-semibold text-ink">Liturgi GKPB</h1>

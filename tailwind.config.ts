@@ -54,7 +54,7 @@ export default {
       boxShadow: {
         soft: '0 1px 2px -1px rgba(0, 0, 0, 0.2), 0 4px 16px -8px rgba(0, 0, 0, 0.28)',
         card: '0 2px 6px -2px rgba(0, 0, 0, 0.22), 0 10px 30px -12px rgba(0, 0, 0, 0.32)',
-        lift: '0 8px 24px -8px rgba(44, 78, 48, 0.28)',
+        lift: '0 8px 24px -8px rgba(170, 28, 34, 0.28)',
       },
       borderRadius: {
         xl2: '1.25rem',

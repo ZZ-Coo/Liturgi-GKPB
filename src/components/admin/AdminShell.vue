@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, watch, onMounted } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { supabase } from '@/lib/supabase'
 import { simplifiedView } from '@/composables/adminViewMode'
-import { Church, LogOut, Rows3, LayoutGrid } from 'lucide-vue-next'
+import { LogOut, Rows3, LayoutGrid } from 'lucide-vue-next'
 import GlobalToast from '@/components/admin/GlobalToast.vue'
+import ConfirmDialog from '@/components/admin/ConfirmDialog.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import AdminQuickNav from '@/components/AdminQuickNav.vue'
+import BrandMark from '@/components/BrandMark.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+
+// A jemaat_admin has exactly one jemaat, so the header can link straight to
+// its public page. A super_admin has none of their own — they get "Semua
+// jemaat" instead and pick one from there.
+const jemaatSlug = ref<string | undefined>()
+onMounted(async () => {
+  if (!auth.scopedJemaatId) return
+  const { data } = await supabase.from('jemaat').select('slug').eq('id', auth.scopedJemaatId).maybeSingle()
+  jemaatSlug.value = data?.slug ?? undefined
+})
 
 async function logout() {
   await auth.logout()
@@ -34,9 +49,7 @@ watch(
     <header class="sticky top-0 z-10 border-b border-line bg-surface/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
         <div class="flex items-center gap-2.5">
-          <div class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper">
-            <Church class="h-4 w-4 text-accent" stroke-width="1.75" />
-          </div>
+          <BrandMark size="sm" />
           <div class="leading-tight">
             <p class="font-display text-sm font-semibold text-ink">Liturgi GKPB</p>
             <p class="label-eyebrow -mt-0.5">Admin</p>
@@ -44,6 +57,8 @@ watch(
         </div>
 
         <div class="flex items-center gap-3">
+          <AdminQuickNav :links="['root', 'jemaat']" :jemaat-slug="jemaatSlug" />
+
           <!-- Normal/Simpel — a 2-segment icon pill, same sliding-pill
                pattern as the public page's Pagi/Siang/Sore toggle. No
                longer super_admin-only: a jemaat_admin's Riwayat also
@@ -89,9 +104,26 @@ watch(
     </header>
 
     <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <!-- Liturgi | Warta. Only a super_admin has a Warta section (its RLS
+           policies are super_admin-only), so nobody else gets the tabs. -->
+      <nav v-if="auth.isSuperAdmin" class="mb-6 inline-flex rounded-full border border-line bg-surface p-0.5 shadow-soft" aria-label="Bagian admin">
+        <RouterLink
+          v-for="tab in [
+            { to: '/', label: 'Liturgi', active: !route.path.startsWith('/warta') },
+            { to: '/warta', label: 'Warta', active: route.path.startsWith('/warta') },
+          ]"
+          :key="tab.to"
+          :to="tab.to"
+          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
+          :class="tab.active ? 'bg-accent text-white shadow-soft' : 'text-muted hover:text-ink'"
+        >
+          {{ tab.label }}
+        </RouterLink>
+      </nav>
       <slot />
     </main>
 
     <GlobalToast />
+    <ConfirmDialog />
   </div>
 </template>

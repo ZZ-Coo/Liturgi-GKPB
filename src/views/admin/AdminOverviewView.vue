@@ -12,6 +12,7 @@ import { fetchAllJemaat, type JemaatRecord } from '@/lib/tenant'
 import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import { useAuthStore } from '@/stores/authStore'
 import AdminShell from '@/components/admin/AdminShell.vue'
+import { confirmTrash } from '@/composables/confirm'
 import {
   ChevronDown,
   ChevronLeft,
@@ -103,7 +104,7 @@ const actionError = ref<string | null>(null)
 // destroy the file. It has to go through the same Sampah/restore path,
 // not a shortcut around it.
 async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
-  if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah.`)) return
+  if (!(await confirmTrash(`liturgi ${jemaatName} — ${SESI_LABEL[s]}`))) return
   deletingSlot.value = slot.id
   actionError.value = null
   try {

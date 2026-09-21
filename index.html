@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#F9F7F1" />
+    <meta name="theme-color" content="#FDFAF9" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,22 +38,22 @@
         min-height: 100vh;
         align-items: center;
         justify-content: center;
-        background: #f9f7f1;
+        background: #fdfaf9;
       }
       .boot-spinner {
         width: 26px;
         height: 26px;
         border-radius: 9999px;
-        border: 3px solid #e3e0d2;
-        border-top-color: #2c4e30;
+        border: 3px solid #eddfdd;
+        border-top-color: #d3262a;
         animation: boot-spin 0.7s linear infinite;
       }
       html.dark .boot-loader {
-        background: #14150f;
+        background: #1a1212;
       }
       html.dark .boot-spinner {
-        border-color: #33362b;
-        border-top-color: #6fae72;
+        border-color: #443434;
+        border-top-color: #e44044;
       }
       @keyframes boot-spin {
         to {

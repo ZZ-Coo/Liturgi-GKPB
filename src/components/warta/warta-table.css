@@ -1,0 +1,53 @@
+/* Tables inside the warta — the published page and the builder preview share
+   these rules. Wide tables scroll inside their own wrapper so the page itself
+   never scrolls sideways on a phone. */
+.warta-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.warta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.warta-table th,
+.warta-table td {
+  padding: 0.3rem 0.55rem;
+  vertical-align: top;
+}
+.warta-table th {
+  font-weight: 700;
+  text-align: center;
+  background: rgb(var(--color-paper-deep));
+}
+.warta-table .col-no {
+  width: 2.5rem;
+  text-align: center;
+}
+.warta-table .align-left { text-align: left; }
+.warta-table .align-center { text-align: center; }
+.warta-table .align-right { text-align: right; font-variant-numeric: tabular-nums; }
+.warta-table.is-bordered th,
+.warta-table.is-bordered td {
+  border: 1px solid rgb(var(--color-ink) / 0.55);
+}
+.warta-table tr {
+  break-inside: avoid;
+}
+.warta-table tfoot td {
+  font-weight: 700;
+}
+.warta-table.is-finance tfoot td {
+  background: rgb(var(--color-paper-deep));
+}
+.warta-table .is-invalid {
+  color: rgb(var(--color-danger));
+  text-decoration: underline wavy;
+}
+@media print {
+  .warta-table.is-bordered th,
+  .warta-table.is-bordered td {
+    border-color: #000;
+  }
+}

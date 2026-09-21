@@ -57,34 +57,42 @@ export function resolveTenant(
   return { kind: 'root' }
 }
 
-export function buildTenantUrl(slug: string): string {
+// The three build*Url helpers below all answer the same question — "can I
+// link across apps with a subdomain, or do I have to fall back to a path?" —
+// so they share this.
+function urlContext() {
   const host = window.location.hostname.toLowerCase()
   const isLocal = host === 'localhost' || host.endsWith('.localhost')
   const rootDomain = isLocal ? 'localhost' : ROOT_DOMAIN
-  const canUseSubdomain = isLocal || host === rootDomain
-  const port = window.location.port ? `:${window.location.port}` : ''
-
-  if (canUseSubdomain) {
-    return `${window.location.protocol}//${slug}.${rootDomain}${port}`
+  return {
+    rootDomain,
+    // On the root domain itself OR any of its subdomains: if we're already
+    // being served from <something>.liturgigkpb.com, the wildcard DNS works,
+    // so linking to admin.<root> / <root> / <slug>.<root> from there is safe.
+    canUseSubdomain: isLocal || host === rootDomain || host.endsWith(`.${rootDomain}`),
+    origin: (sub?: string) =>
+      `${window.location.protocol}//${sub ? `${sub}.` : ''}${rootDomain}${window.location.port ? `:${window.location.port}` : ''}`,
   }
+}
+
+export function buildTenantUrl(slug: string): string {
+  const ctx = urlContext()
+  if (ctx.canUseSubdomain) return ctx.origin(slug)
   // No wildcard domain yet (e.g. still on *.vercel.app) — path-based link.
   return `/j/${slug}`
 }
 
-// Link back to the "pilih jemaat" landing page from a tenant page — mirrors
-// buildTenantUrl's two modes (subdomain vs path) so the back-link works
-// the same way the forward link into a tenant does.
+// Link to the "pilih jemaat" landing page (locked for everyone but a
+// logged-in super_admin — see RootGate). Mirrors buildTenantUrl's two modes.
 export function buildRootUrl(): string {
-  const host = window.location.hostname.toLowerCase()
-  const isLocal = host === 'localhost' || host.endsWith('.localhost')
-  const rootDomain = isLocal ? 'localhost' : ROOT_DOMAIN
-  const canUseSubdomain = isLocal || host === rootDomain
-  const port = window.location.port ? `:${window.location.port}` : ''
+  const ctx = urlContext()
+  return ctx.canUseSubdomain ? ctx.origin() : '/'
+}
 
-  if (canUseSubdomain) {
-    return `${window.location.protocol}//${rootDomain}${port}`
-  }
-  return '/'
+// Link to the admin panel, same two modes: admin.<root> or /admin.
+export function buildAdminUrl(): string {
+  const ctx = urlContext()
+  return ctx.canUseSubdomain ? ctx.origin('admin') : '/admin'
 }
 
 export interface JemaatRecord {
@@ -94,19 +102,18 @@ export interface JemaatRecord {
   category: string | null
 }
 
+// Public lookup — anon has no direct access to the `jemaat` table (see
+// db/setup.sql), so this goes through get_public_jemaat(slug), which only
+// ever returns the one jemaat whose slug was asked for.
 export async function fetchTenantBySlug(slug: string): Promise<JemaatRecord | null> {
   try {
-    const { data, error } = await supabase
-      .from('jemaat')
-      .select('id, slug, name, category')
-      .eq('slug', slug)
-      .single()
+    const { data, error } = await supabase.rpc('get_public_jemaat', { p_slug: slug })
 
     if (error) {
-      if (error.code !== 'PGRST116') console.error('fetchTenantBySlug failed:', error.message)
+      console.error('fetchTenantBySlug failed:', error.message)
       return null
     }
-    return data
+    return ((data ?? []) as JemaatRecord[])[0] ?? null
   } catch (err) {
     // Total network failure (DNS, connection refused, etc.) — supabase-js
     // only guarantees a resolved {error} for HTTP-level failures, not for
@@ -118,6 +125,8 @@ export async function fetchTenantBySlug(slug: string): Promise<JemaatRecord | nu
   }
 }
 
+// Admin-side only: RLS returns every jemaat to a super_admin, just their own
+// to a jemaat_admin, and nothing (permission denied) to anon.
 export async function fetchAllJemaat(): Promise<JemaatRecord[]> {
   try {
     const { data, error } = await supabase

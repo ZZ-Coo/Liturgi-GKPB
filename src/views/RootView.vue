@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { fetchAllJemaat, buildTenantUrl, type JemaatRecord } from '@/lib/tenant'
-import { Church, ChevronDown, MapPin, Search, X } from 'lucide-vue-next'
+import { ChevronDown, MapPin, Search, X } from 'lucide-vue-next'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import AdminQuickNav from '@/components/AdminQuickNav.vue'
+import BrandMark from '@/components/BrandMark.vue'
 
 const jemaatList = ref<JemaatRecord[]>([])
 const loading = ref(true)
@@ -45,7 +47,8 @@ const isSearching = computed(() => query.value.trim().length > 0)
 
 <template>
   <div class="relative min-h-screen overflow-hidden bg-paper px-4 py-12 sm:py-16">
-    <div class="absolute right-4 top-4 sm:right-6 sm:top-6">
+    <div class="absolute right-4 top-4 z-10 flex items-center gap-2 sm:right-6 sm:top-6">
+      <AdminQuickNav :links="['admin']" />
       <ThemeToggle />
     </div>
 
@@ -60,9 +63,7 @@ const isSearching = computed(() => query.value.trim().length > 0)
 
     <div class="relative mx-auto max-w-xl space-y-7">
       <div class="flex flex-col items-center gap-3 text-center">
-        <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-surface shadow-lift">
-          <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
-        </div>
+        <BrandMark size="lg" />
         <div class="space-y-1">
           <p class="label-eyebrow text-accent">Liturgi GKPB</p>
           <h1 class="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">

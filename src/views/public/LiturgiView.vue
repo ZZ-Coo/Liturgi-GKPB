@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTenantBySlug, buildRootUrl } from '@/lib/tenant'
+import { fetchTenantBySlug } from '@/lib/tenant'
 import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import { toIsoDate } from '@/lib/date'
-import { Church, Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import AdminQuickNav from '@/components/AdminQuickNav.vue'
+import BrandMark from '@/components/BrandMark.vue'
+import WartaDocument from '@/components/warta/WartaDocument.vue'
+import { fetchPublicWarta } from '@/lib/warta/publicApi'
+import type { WartaSection } from '@/lib/warta/types'
 
 // Lazy-loaded so a jemaat viewing a PDF never downloads mammoth (and vice
 // versa) — each pulls in a real dependency (pdfjs-dist / mammoth) that's
@@ -18,6 +23,8 @@ const DocxViewer = defineAsyncComponent(() => import('@/components/DocxViewer.vu
 const route = useRoute()
 const router = useRouter()
 const liturgi = useLiturgiStore()
+// Public reads are keyed by slug (RPC), not by jemaat id.
+const slug = tenant.kind === 'tenant' ? tenant.slug : ''
 
 type Sesi = 'PAGI' | 'SIANG' | 'SORE'
 const SESI_OPTIONS: { value: Sesi; label: string; icon: typeof Sunrise }[] = [
@@ -55,7 +62,26 @@ const tint = computed(() => liturgicalTint(liturgi.current?.warnaLiturgi))
 
 async function load() {
   if (!jemaatId.value) return
-  await liturgi.fetchByJemaatAndDate(jemaatId.value, tanggal.value, sesi.value)
+  await liturgi.fetchBySlugAndDate(slug, tanggal.value, sesi.value)
+}
+
+// The warta belongs to the DATE, not to a sesi (one document covers Pagi and
+// Sore), so it's fetched when the date changes and left alone when only the
+// sesi tab does. It renders under the liturgi — no tab of its own.
+const warta = ref<WartaSection[]>([])
+let wartaToken = 0
+
+async function loadWarta() {
+  if (!jemaatId.value) return
+  const token = ++wartaToken
+  warta.value = []
+  try {
+    const sections = await fetchPublicWarta(slug, tanggal.value)
+    if (token === wartaToken) warta.value = sections
+  } catch (err) {
+    // The liturgi is the main content; a warta that fails to load just isn't shown.
+    console.error('loadWarta failed:', err)
+  }
 }
 
 function switchSesi(next: Sesi) {
@@ -89,8 +115,8 @@ const nextDate = ref<string | null>(null)
 async function refreshAdjacentDates() {
   if (!jemaatId.value) return
   const [prev, next] = await Promise.all([
-    liturgi.findAdjacentDate(jemaatId.value, tanggal.value, 'prev'),
-    liturgi.findAdjacentDate(jemaatId.value, tanggal.value, 'next'),
+    liturgi.findAdjacentDate(slug, tanggal.value, 'prev'),
+    liturgi.findAdjacentDate(slug, tanggal.value, 'next'),
   ])
   prevDate.value = prev
   nextDate.value = next
@@ -105,7 +131,7 @@ async function goToDate(direction: 'prev' | 'next') {
   // stays mounted across a params-only route change, so state is updated
   // directly rather than relying on a route watcher.
   router.replace({ name: 'public-liturgi-by-date', params: { tanggal: target } })
-  await loadWithSesiFallback()
+  await Promise.all([loadWithSesiFallback(), loadWarta()])
   await refreshAdjacentDates()
 }
 
@@ -126,10 +152,10 @@ onMounted(async () => {
   // a specific date — an explicit /:tanggal link should never be
   // silently redirected to a different date.
   if (!explicitTanggal) {
-    tanggal.value = await liturgi.resolveDefaultDate(jemaatId.value, toIsoDate(new Date()))
+    tanggal.value = await liturgi.resolveDefaultDate(slug, toIsoDate(new Date()))
   }
 
-  await loadWithSesiFallback()
+  await Promise.all([loadWithSesiFallback(), loadWarta()])
   await refreshAdjacentDates()
 })
 </script>
@@ -146,10 +172,6 @@ onMounted(async () => {
       class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(ellipse_at_top,theme(colors.accent.soft)_0%,transparent_65%)]"
     />
 
-    <div class="absolute right-3 top-4 z-10 sm:right-4">
-      <ThemeToggle />
-    </div>
-
     <div class="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-10 xl:max-w-7xl xl:gap-14">
       <!-- left column: back-link + letterhead card wrapped together as ONE
            grid child, matching the 2 explicit columns above — 3 loose
@@ -161,9 +183,14 @@ onMounted(async () => {
              elements floating on the gradient, so the header reads as a
              deliberate "cover page" even before any liturgi has loaded. -->
         <div class="flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface px-5 py-6 text-center shadow-card sm:px-6">
-          <div class="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-paper shadow-soft">
-            <Church class="h-7 w-7 text-accent" stroke-width="1.6" />
+          <!-- theme toggle on the left; admin shortcuts (icons only, and only
+               rendered for a logged-in admin) on the right -->
+          <div class="-mt-2 flex w-full items-center justify-between">
+            <ThemeToggle />
+            <AdminQuickNav :links="['admin', 'root']" compact />
           </div>
+
+          <BrandMark size="lg" />
 
           <div class="space-y-1.5">
             <p v-if="jemaatCategory" class="label-eyebrow text-accent">{{ jemaatCategory }}</p>
@@ -277,6 +304,9 @@ onMounted(async () => {
         </template>
 
         <p v-else class="text-center text-sm text-muted">Belum ada liturgi untuk sesi ini.</p>
+
+        <!-- warta jemaat for this date, straight under the liturgi -->
+        <WartaDocument v-if="!tenantLoading && jemaatId && warta.length" :sections="warta" />
       </div>
     </div>
   </div>

@@ -26,3 +26,12 @@ export function nearestSundayIso(from: Date = new Date()): string {
   d.setDate(d.getDate() - d.getDay()) // getDay(): 0 = Sunday — rolls back to the most recent one
   return toIsoDate(d)
 }
+
+// The coming Sunday, or today when today already is one. A sensible starting
+// point when creating a new warta; the admin can pick any other date.
+export function upcomingSundayIso(from: Date = new Date()): string {
+  const d = new Date(from)
+  const untilSunday = (7 - d.getDay()) % 7
+  d.setDate(d.getDate() + untilSunday)
+  return toIsoDate(d)
+}

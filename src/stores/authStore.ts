@@ -4,6 +4,11 @@ import { supabase } from '@/lib/supabase'
 
 type AdminRole = 'jemaat_admin' | 'super_admin'
 
+// Shared by the router guard (admin) and the root gate — both need the
+// session resolved, but init() subscribes to onAuthStateChange, so it must
+// only ever run once per page load.
+let initPromise: Promise<void> | null = null
+
 interface AuthState {
   userId: string | null
   email: string | null
@@ -35,6 +40,11 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
+    initOnce(): Promise<void> {
+      if (!initPromise) initPromise = this.init()
+      return initPromise
+    },
+
     async init() {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
@@ -48,8 +58,8 @@ export const useAuthStore = defineStore('auth', {
       // logout from another tab leaves `isAuthenticated` stuck true here
       // even though the server is already rejecting requests, and admin
       // actions (save/delete) start failing with no clear reason why.
-      // Safe to subscribe just once: init() itself is only ever called
-      // once app-wide (memoized in router/index.ts).
+      // Safe to subscribe just once: init() is only ever called through
+      // initOnce(), which memoizes it for the whole page load.
       supabase.auth.onAuthStateChange((_event, session) => {
         const changedUser = session?.user.id !== this.userId
         this.userId = session?.user.id ?? null
@@ -64,7 +74,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     // Looks up this user's row in `admin_users` (jemaat_id + role — see
-    // setup-rls.sql). This is a plain SELECT the user's own RLS policy
+    // db/setup.sql). This is a plain SELECT the user's own RLS policy
     // already allows on themself, so it can't fail for auth reasons; it
     // *can* legitimately come back empty for an authenticated account
     // that was never granted admin access, which is treated the same as

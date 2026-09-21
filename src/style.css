@@ -4,22 +4,26 @@
 
 @layer base {
   :root {
-    /* Light (default) — warm paper editorial palette. RGB triplets, not
-       hex, so Tailwind's rgb(var(...) / <alpha-value>) can still resolve
+    /* Light (default) — white and red, after the GKPB emblem. The emblem's
+       own red is about rgb(232 48 48); --color-accent is a touch deeper so
+       white text on it (buttons, active pills) stays readable. RGB triplets,
+       not hex, so Tailwind's rgb(var(...) / <alpha-value>) can still resolve
        opacity modifiers like bg-accent-soft/40 or border-line/70. */
-    --color-paper: 249 247 241;
-    --color-paper-deep: 241 238 227;
+    --color-paper: 253 250 249;
+    --color-paper-deep: 247 240 238;
     --color-surface: 255 255 255;
-    --color-ink: 27 33 25;
-    --color-muted: 118 124 111;
-    --color-line: 227 224 210;
-    --color-accent: 44 78 48;
-    --color-accent-hover: 33 60 37;
-    --color-accent-soft: 230 236 222;
-    --color-accent-line: 199 212 188;
+    --color-ink: 34 24 24;
+    --color-muted: 122 106 104;
+    --color-line: 236 224 222;
+    --color-accent: 211 38 42;
+    --color-accent-hover: 178 28 32;
+    --color-accent-soft: 253 235 234;
+    --color-accent-line: 245 196 194;
     --color-gold: 184 134 47;
     --color-gold-soft: 243 231 206;
-    --color-danger: 150 60 44;
+    /* Destructive actions: a deeper crimson than the accent. They also
+       differ in style (outlined/soft vs the solid primary button). */
+    --color-danger: 168 24 24;
     --color-liturgi-hijau: 44 107 63;
     --color-liturgi-hijau-soft: 228 239 226;
     --color-liturgi-ungu: 91 75 138;
@@ -36,19 +40,19 @@
      border-line, bg-accent-soft, bg-liturgi-*-soft, …) just works once
      `dark` lands on <html>; nothing else in the app needs to know. */
   html.dark {
-    --color-paper: 20 21 15;
-    --color-paper-deep: 29 31 23;
-    --color-surface: 30 32 25;
-    --color-ink: 237 234 224;
-    --color-muted: 154 156 142;
-    --color-line: 51 54 43;
-    --color-accent: 111 174 114;
-    --color-accent-hover: 133 192 136;
-    --color-accent-soft: 35 54 31;
-    --color-accent-line: 62 90 58;
+    --color-paper: 26 18 18;
+    --color-paper-deep: 34 25 25;
+    --color-surface: 38 28 28;
+    --color-ink: 246 238 236;
+    --color-muted: 178 160 157;
+    --color-line: 68 52 52;
+    --color-accent: 228 64 68;
+    --color-accent-hover: 240 92 94;
+    --color-accent-soft: 74 30 33;
+    --color-accent-line: 128 54 58;
     --color-gold: 217 174 92;
     --color-gold-soft: 58 46 21;
-    --color-danger: 225 122 99;
+    --color-danger: 255 138 122;
     --color-liturgi-hijau: 95 163 110;
     --color-liturgi-hijau-soft: 28 46 31;
     --color-liturgi-ungu: 156 139 209;

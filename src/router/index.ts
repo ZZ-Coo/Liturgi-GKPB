@@ -8,15 +8,26 @@ const adminRoutes = [
   { path: '/', name: 'admin-liturgi-list', component: () => import('@/views/admin/AdminHomeView.vue'), meta: { requiresAuth: true } },
   { path: '/upload', name: 'admin-liturgi-upload', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
   { path: '/liturgi/:id/edit', name: 'admin-liturgi-edit', component: () => import('@/views/admin/UploadLiturgiView.vue'), meta: { requiresAuth: true } },
+  // Warta is super_admin-only for now, matching its RLS policies.
+  { path: '/warta', name: 'admin-warta-list', component: () => import('@/views/admin/WartaListView.vue'), meta: { requiresAuth: true, requiresSuperAdmin: true } },
+  { path: '/warta/:id', name: 'admin-warta-edit', component: () => import('@/views/admin/WartaEditView.vue'), meta: { requiresAuth: true, requiresSuperAdmin: true } },
+  // Unknown admin path (e.g. "/admin/..." typed on admin.localhost, where
+  // routes have no /admin prefix): go home instead of rendering a blank page.
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const publicRoutes = [
   { path: '/', name: 'public-liturgi', component: () => import('@/views/public/LiturgiView.vue') },
   { path: '/:tanggal', name: 'public-liturgi-by-date', component: () => import('@/views/public/LiturgiView.vue') },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
+// Root is locked by default: RootGate shows the jemaat directory only to a
+// logged-in super_admin, everyone else gets the neutral locked page. Any
+// other path in root mode is folded back to '/'.
 const rootRoutes = [
-  { path: '/', name: 'root-landing', component: () => import('@/views/RootView.vue') },
+  { path: '/', name: 'root-landing', component: () => import('@/views/RootGate.vue') },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const tenant = resolveTenant()
@@ -39,17 +50,17 @@ export const router = createRouter({
   routes,
 })
 
-let authReady: Promise<void> | null = null
-
 router.beforeEach(async (to) => {
   if (tenant.kind !== 'admin') return true
 
   const auth = useAuthStore()
-  if (!authReady) authReady = auth.init()
-  await authReady
+  await auth.initOnce()
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'admin-login' }
+  }
+  if (to.meta.requiresSuperAdmin && !auth.isSuperAdmin) {
+    return { path: '/' }
   }
   return true
 })

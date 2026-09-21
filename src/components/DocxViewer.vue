@@ -124,7 +124,7 @@ watch(() => props.url, load)
            user-supplied at render time, so this is safe to render directly -->
       <div
         v-else
-        class="docx-content mx-auto max-w-2xl rounded-xl border border-line bg-white px-5 py-6 shadow-[0_2px_10px_-4px_rgba(27,33,25,0.15)] sm:px-8 sm:py-8"
+        class="docx-content mx-auto max-w-2xl rounded-xl border border-line bg-surface px-5 py-6 shadow-soft sm:px-8 sm:py-8"
         v-html="html"
       />
     </div>

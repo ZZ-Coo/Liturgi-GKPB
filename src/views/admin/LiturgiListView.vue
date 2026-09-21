@@ -9,6 +9,7 @@ import { nearestSundayIso, toIsoDate } from '@/lib/date'
 import { simplifiedView } from '@/composables/adminViewMode'
 import { pushToast } from '@/composables/toast'
 import AdminShell from '@/components/admin/AdminShell.vue'
+import { confirmTrash, confirmDestroy } from '@/composables/confirm'
 import {
   Plus,
   Filter,
@@ -245,7 +246,7 @@ const JEMAAT_STATUS_ICON = { terbit: CheckCircle2, draf: Circle, kosong: CircleD
 const JEMAAT_STATUS_LABEL = { terbit: 'Terbit', draf: 'Draf', kosong: 'Kosong' } as const
 
 async function deleteSlot(jemaatName: string, s: Sesi, slot: SlotInfo) {
-  if (!confirm(`Hapus liturgi ${jemaatName} — ${SESI_LABEL[s]}? Masih bisa dipulihkan lewat Sampah.`)) return
+  if (!(await confirmTrash(`liturgi ${jemaatName} — ${SESI_LABEL[s]}`))) return
   deletingSlot.value = slot.id
   actionError.value = null
   try {
@@ -315,7 +316,7 @@ onMounted(async () => {
 })
 
 async function remove(row: Row) {
-  if (!confirm(`Hapus liturgi ${row.jemaat?.name ?? ''} — ${row.tanggal}? Masih bisa dipulihkan lewat Sampah.`)) return
+  if (!(await confirmTrash(`liturgi ${row.jemaat?.name ?? ''} — ${row.tanggal}`))) return
   actionError.value = null
   // Soft delete only — file stays in storage untouched (restore needs it
   // back). Permanent removal is a separate, more deliberate action from
@@ -349,7 +350,7 @@ async function restore(row: Row) {
 }
 
 async function permanentDelete(row: Row) {
-  if (!confirm(`Hapus permanen liturgi ${row.jemaat?.name ?? ''} — ${row.tanggal}? Tindakan ini TIDAK BISA dibatalkan.`))
+  if (!(await confirmDestroy(`liturgi ${row.jemaat?.name ?? ''} — ${row.tanggal}`)))
     return
   actionError.value = null
   const { error } = await supabase.from('liturgi').delete().eq('id', row.id)
@@ -405,7 +406,7 @@ function toggleSelectAllVisible() {
 async function bulkDelete() {
   const ids = Array.from(selected.value)
   if (!ids.length) return
-  if (!confirm(`Hapus ${ids.length} liturgi terpilih? Masih bisa dipulihkan lewat Sampah.`)) return
+  if (!(await confirmTrash(`${ids.length} liturgi terpilih`))) return
 
   bulkDeleting.value = true
   actionError.value = null
