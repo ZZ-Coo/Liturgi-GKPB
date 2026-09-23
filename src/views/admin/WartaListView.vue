@@ -17,9 +17,18 @@ import { pushToast } from '@/composables/toast'
 import type { WartaSection } from '@/lib/warta/types'
 import { confirmTrash, confirmDestroy } from '@/composables/confirm'
 import { useAuthStore } from '@/stores/authStore'
+import { simplifiedView } from '@/composables/adminViewMode'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+// Same Simpel convention as the Liturgi side (AdminShell's toggle): action
+// buttons drop their text down to icon-only, and the "Mulai dari" choice
+// collapses behind a row since starter/kerangka-kosong is a fine default —
+// it re-expands on its own once there's an actual choice to make (a
+// previous warta was found to copy from).
+const compact = computed(() => simplifiedView.value)
+const sourceExpanded = ref(!simplifiedView.value)
 
 // A jemaat_admin only ever has one jemaat — RLS already limits every query
 // to it, but the picker is narrowed too so there's nothing to see (even via
@@ -77,6 +86,7 @@ watch(filterJemaatId, loadRows)
 
 // ── create ────────────────────────────────────────────────────────────
 type Source = 'copy' | 'starter' | 'sample'
+const SOURCE_LABEL: Record<Source, string> = { copy: 'Salin warta lalu', starter: 'Kerangka kosong', sample: 'Data contoh' }
 
 const showCreate = ref(false)
 const newJemaatId = ref('')
@@ -101,6 +111,7 @@ watch([newJemaatId, newTanggal], async ([jemaatId, tanggal]) => {
     if (token !== lookupToken) return
     previous.value = found
     source.value = found ? 'copy' : source.value === 'copy' ? 'starter' : source.value
+    if (found) sourceExpanded.value = true
   } catch {
     // Not fatal: the option just isn't offered.
   }
@@ -184,8 +195,8 @@ async function removeForever(row: WartaSummary) {
           <p class="label-eyebrow text-accent">Admin</p>
           <h1 class="font-display text-2xl font-semibold text-ink">Warta Jemaat</h1>
         </div>
-        <button v-if="!showCreate" type="button" class="btn-primary gap-1.5" @click="showCreate = true">
-          <Plus class="h-4 w-4" /> Buat warta
+        <button v-if="!showCreate" type="button" class="btn-primary gap-1.5" title="Buat warta" @click="showCreate = true">
+          <Plus class="h-4 w-4" /> <span v-if="!compact">Buat warta</span>
         </button>
       </div>
 
@@ -208,7 +219,19 @@ async function removeForever(row: WartaSummary) {
         </div>
 
         <fieldset v-if="newJemaatId && newTanggal" class="space-y-2">
-          <legend class="label-eyebrow mb-1.5">Mulai dari</legend>
+          <button
+            v-if="compact"
+            type="button"
+            class="label-eyebrow mb-1.5 flex w-full items-center text-left"
+            @click="sourceExpanded = !sourceExpanded"
+          >
+            Mulai dari
+            <span class="ml-2 font-normal normal-case text-muted">{{ SOURCE_LABEL[source] }}</span>
+            <ChevronDown class="ml-auto h-3.5 w-3.5 text-muted transition-transform" :class="sourceExpanded && 'rotate-180'" />
+          </button>
+          <legend v-else class="label-eyebrow mb-1.5">Mulai dari</legend>
+
+          <template v-if="sourceExpanded || !compact">
           <label v-if="previous" class="flex cursor-pointer items-start gap-2 text-sm text-ink">
             <input v-model="source" type="radio" value="copy" class="mt-1 accent-[rgb(var(--color-accent))]" />
             <span>Salin dari warta {{ formatTanggal(previous.tanggal) }} <span class="text-muted">(paling baru sebelum tanggal ini)</span></span>
@@ -221,6 +244,7 @@ async function removeForever(row: WartaSummary) {
             <input v-model="source" type="radio" value="sample" class="mt-1 accent-[rgb(var(--color-accent))]" />
             <span>Data contoh <span class="text-muted">(fiktif, untuk mencoba)</span></span>
           </label>
+          </template>
         </fieldset>
 
         <p v-if="existing" class="rounded-lg bg-gold-soft px-3 py-2 text-sm text-ink">
@@ -281,7 +305,9 @@ async function removeForever(row: WartaSummary) {
                 <p class="truncate text-sm text-ink">{{ jemaatName(row.jemaatId) }}</p>
                 <p class="text-xs text-muted">{{ formatTanggal(row.tanggal) }}</p>
               </div>
-              <button type="button" class="btn gap-1.5 !py-1.5 text-xs" @click="restore(row)"><RotateCcw class="h-3.5 w-3.5" /> Pulihkan</button>
+              <button type="button" class="btn gap-1.5 !py-1.5 text-xs" title="Pulihkan" @click="restore(row)">
+                <RotateCcw class="h-3.5 w-3.5" /> <span v-if="!compact">Pulihkan</span>
+              </button>
               <button type="button" class="btn-danger px-2.5" title="Hapus permanen" aria-label="Hapus permanen" @click="removeForever(row)">
                 <Trash2 class="h-4 w-4" />
               </button>

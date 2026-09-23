@@ -11,6 +11,7 @@ import { WARTA_SLUG_KEY } from '@/lib/warta/context'
 import { pushToast } from '@/composables/toast'
 import type { PublishStatus, WartaSection } from '@/lib/warta/types'
 import { askConfirm, confirmTrash } from '@/composables/confirm'
+import { simplifiedView } from '@/composables/adminViewMode'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,6 +47,10 @@ const tanggalLabel = computed(() =>
 
 // Narrow screens can't fit editor and preview side by side; a tab picks one.
 const viewTab = ref<'edit' | 'preview'>('edit')
+
+// Same Simpel toggle as the rest of admin (AdminShell) — drops the Simpan
+// button's text down to icon-only, same as Upload/Edit Liturgi's save button.
+const compact = computed(() => simplifiedView.value)
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
@@ -236,10 +241,16 @@ onBeforeRouteLeave(async () => {
             <template v-else>Semua perubahan tersimpan.</template>
           </p>
         </div>
-        <button type="button" class="btn-primary" :disabled="!dirty || saving" @click="save()">
+        <button
+          type="button"
+          class="btn-primary gap-1.5"
+          :disabled="!dirty || saving"
+          :title="saving ? 'Menyimpan…' : 'Simpan'"
+          @click="save()"
+        >
           <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
           <Save v-else class="h-4 w-4" />
-          Simpan
+          <span v-if="saving || !compact">{{ saving ? 'Menyimpan…' : 'Simpan' }}</span>
         </button>
       </div>
     </div>
