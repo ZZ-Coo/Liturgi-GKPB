@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { fetchAllJemaat, buildTenantUrl, type JemaatRecord } from '@/lib/tenant'
-import { ChevronDown, MapPin, Search, X } from 'lucide-vue-next'
+import { ChevronDown, MapPin, Search, X, Copy, Check } from 'lucide-vue-next'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import AdminQuickNav from '@/components/AdminQuickNav.vue'
 import BrandMark from '@/components/BrandMark.vue'
@@ -9,6 +9,23 @@ import BrandMark from '@/components/BrandMark.vue'
 const jemaatList = ref<JemaatRecord[]>([])
 const loading = ref(true)
 const query = ref('')
+
+// A jemaat with an accessCode has a link that isn't guessable/typable
+// (that's the point) — so give super_admin a copy button instead of
+// expecting them to read it off the screen and retype it somewhere.
+const copiedId = ref<string | null>(null)
+async function copyLink(jemaat: JemaatRecord) {
+  try {
+    await navigator.clipboard.writeText(buildTenantUrl(jemaat.slug, jemaat.accessCode))
+    copiedId.value = jemaat.id
+    setTimeout(() => {
+      if (copiedId.value === jemaat.id) copiedId.value = null
+    }, 1500)
+  } catch {
+    // Clipboard API can fail (permissions, insecure context) — not worth a
+    // toast system just for this; the link is still visible/clickable.
+  }
+}
 
 onMounted(async () => {
   jemaatList.value = await fetchAllJemaat()
@@ -126,13 +143,23 @@ const isSearching = computed(() => query.value.trim().length > 0)
           </summary>
 
           <ul class="border-t border-line">
-            <li v-for="jemaat in group.jemaat" :key="jemaat.id">
+            <li v-for="jemaat in group.jemaat" :key="jemaat.id" class="flex items-center">
               <a
-                :href="buildTenantUrl(jemaat.slug)"
-                class="flex items-center justify-between px-4 py-3 pl-10 text-sm text-ink transition-colors hover:bg-accent-soft/50"
+                :href="buildTenantUrl(jemaat.slug, jemaat.accessCode)"
+                class="flex flex-1 items-center justify-between px-4 py-3 pl-10 text-sm text-ink transition-colors hover:bg-accent-soft/50"
               >
                 {{ jemaat.name }}
               </a>
+              <button
+                v-if="jemaat.accessCode"
+                type="button"
+                title="Salin link (link ini pakai kode akses, tidak bisa ditebak/diketik ulang)"
+                class="mr-3 rounded-md p-1.5 text-muted transition-colors hover:bg-accent-soft hover:text-accent"
+                @click="copyLink(jemaat)"
+              >
+                <Check v-if="copiedId === jemaat.id" class="h-4 w-4 text-accent" />
+                <Copy v-else class="h-4 w-4" />
+              </button>
             </li>
           </ul>
         </details>

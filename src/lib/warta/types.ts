@@ -83,13 +83,33 @@ export interface FinanceTableBlock {
   data: FinanceTableData
 }
 
-// Phase 4 (rest): image.
-export type WartaBlock = TextBlock | TableBlock | FinanceTableBlock
+export type ImageWidth = 'small' | 'medium' | 'large' | 'full'
+
+// `path` is the bucket-relative path (<slug>/warta/<file>) — kept alongside
+// the public `url` so a replace/remove doesn't have to re-derive it by
+// string-slicing the URL (lib/storage.ts already does that as a fallback for
+// files uploaded before this field existed).
+export interface ImageData {
+  url: string
+  path: string
+  alt: string
+  caption: string
+  width: ImageWidth
+}
+
+export interface ImageBlock {
+  id: string
+  type: 'image'
+  title?: string
+  data: ImageData
+}
+
+export type WartaBlock = TextBlock | TableBlock | FinanceTableBlock | ImageBlock
 export type WartaBlockType = WartaBlock['type']
 // Runtime list of the same thing, for validating data read back from the
 // database (parse.ts) without importing the block registry (and with it,
 // Vue components) into plain-logic code.
-export const WARTA_BLOCK_TYPES: readonly WartaBlockType[] = ['text', 'table', 'financeTable']
+export const WARTA_BLOCK_TYPES: readonly WartaBlockType[] = ['text', 'table', 'financeTable', 'image']
 
 export interface WartaSection {
   id: string

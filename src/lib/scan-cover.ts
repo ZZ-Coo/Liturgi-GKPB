@@ -117,7 +117,17 @@ export function parseCoverText(text: string, extraText = ''): ScannedCover {
   const jamMatch = normalized.match(/Pukul\s*:?\s*(\d{1,2})[.:](\d{2})/i)
   if (jamMatch) result.jamMulai = `${jamMatch[1].padStart(2, '0')}:${jamMatch[2]}`
 
-  const pendetaMatch = normalized.match(/Dilayani\s+Oleh\s*:?\s*(Pdt\.?\s?[A-Za-zÀ-Ú.,\s]{3,60}?)(?:\s{2,}|AYAT|$)/i)
+  let pendetaMatch = normalized.match(/Dilayani\s+Oleh\s*:?\s*(Pdt\.?\s?[A-Za-zÀ-Ú.,\s]{3,60}?)(?:\s{2,}|AYAT|$)/i)
+  // Fallback for docs with no "Dilayani Oleh" line at all (seen in the real
+  // raw .docx — the name only shows up this way, on its own line near the
+  // top, without that label). Confined to the first ~400 chars (the cover
+  // area) so it can't latch onto a "Pdt :" *dialogue* cue deeper in the
+  // liturgy script, which has no name attached at all.
+  if (!pendetaMatch) {
+    pendetaMatch = normalized
+      .slice(0, 400)
+      .match(/\b(Pdt\.?\s?[A-Za-zÀ-Ú.,\s]{3,60}?)(?:\s{2,}|,?\s*(?:AYAT|TEMA|WARNA)\b|$)/i)
+  }
   if (pendetaMatch) result.pendetaName = pendetaMatch[1].trim().replace(/,$/, '')
 
   // Tema is a bonus pre-fill only — per the actual workflow, the pastor
@@ -128,7 +138,11 @@ export function parseCoverText(text: string, extraText = ''): ScannedCover {
   const warnaMatch = combined.match(/Warna\s+Liturgi\s*:?\s*(Hijau|Putih|Ungu|Merah|Hitam|Kuning|Emas)/i)
   if (warnaMatch) result.warnaLiturgi = warnaMatch[1]
 
-  const mingguMatch = lineNormalized.match(/TATA IBADAH\s+(MINGGU\s+[IVXLCDM0-9]+)\s*\n?\s*([A-ZÀ-Ú .'-]{3,60})?/i)
+  // The heading reads "TATA IBADAH ..." on the merged cover-page PDF but
+  // "LITURGI IBADAH ..." on the actual raw .docx admins upload (confirmed
+  // against the real Sore-service source file) — same template, different
+  // wording depending on which the pendeta happened to type that week.
+  const mingguMatch = lineNormalized.match(/(?:TATA|LITURGI) IBADAH\s+(MINGGU\s+[IVXLCDM0-9]+)\s*\n?\s*([A-ZÀ-Ú .'-]{3,60})?/i)
   if (mingguMatch) {
     result.mingguKe = [mingguMatch[1], mingguMatch[2]].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
   }

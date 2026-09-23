@@ -19,10 +19,12 @@ const route = useRoute()
 // its public page. A super_admin has none of their own — they get "Semua
 // jemaat" instead and pick one from there.
 const jemaatSlug = ref<string | undefined>()
+const jemaatAccessCode = ref<string | null>(null)
 onMounted(async () => {
   if (!auth.scopedJemaatId) return
-  const { data } = await supabase.from('jemaat').select('slug').eq('id', auth.scopedJemaatId).maybeSingle()
+  const { data } = await supabase.from('jemaat').select('slug, accessCode').eq('id', auth.scopedJemaatId).maybeSingle()
   jemaatSlug.value = data?.slug ?? undefined
+  jemaatAccessCode.value = data?.accessCode ?? null
 })
 
 async function logout() {
@@ -57,7 +59,7 @@ watch(
         </div>
 
         <div class="flex items-center gap-3">
-          <AdminQuickNav :links="['root', 'jemaat']" :jemaat-slug="jemaatSlug" />
+          <AdminQuickNav :links="['root', 'jemaat']" :jemaat-slug="jemaatSlug" :jemaat-access-code="jemaatAccessCode" />
 
           <!-- Normal/Simpel — a 2-segment icon pill, same sliding-pill
                pattern as the public page's Pagi/Siang/Sore toggle. No

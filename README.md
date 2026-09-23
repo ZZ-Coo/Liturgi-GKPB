@@ -51,7 +51,12 @@ begitu domain custom + wildcard DNS siap — lihat "Mode akses" di bawah.
   punya policy DELETE untuk super_admin (tidak bisa mencabut akunnya sendiri),
   tapi sengaja tanpa policy INSERT/UPDATE.
 - Slug jemaat bisa ditebak: siapa pun yang tahu `/j/<slug>` bisa membuka liturgi
-  yang terbit di sana. Cukup untuk sekarang; opsi berikutnya: kode acak di link.
+  yang terbit di sana. Cukup untuk sekarang buat kebanyakan jemaat. Kalau perlu
+  lapisan tambahan untuk satu jemaat tertentu, link-nya bisa dijadikan
+  `/j/<slug>-<kode>` (kode 6 karakter, selalu diawali angka) — slug tanpa kode
+  tetap jalan seperti biasa selama `accessCode`-nya belum diisi. Diberi/dicabut
+  lewat SQL Editor (blok nomor 7 di `db/setup.sql`), bukan dari UI. Lihat
+  `src/lib/tenant.ts` untuk cara link itu di-parse.
 
 ## Setup dari nol
 
@@ -63,7 +68,16 @@ npx prisma migrate dev --name init
 ```
 
 Lalu di **Supabase SQL Editor**, jalankan `db/setup.sql` sekali utuh (aman
-di-run ulang). File ini juga membuat bucket `liturgi-files` (public).
+di-run ulang). File ini juga membuat bucket `liturgi-files` (public), dan
+(opsional) fungsi SQL untuk jadwal `pg_cron` yang membersihkan file yatim di
+storage — langkah lengkapnya ada di "Sapu file yatim" di bawah.
+
+Sudah pernah setup sebelumnya dan baru menarik perubahan yang menambah kolom
+`accessCode` ke `jemaat`? Jalankan migrasinya dulu:
+
+```bash
+npx prisma migrate dev --name add_jemaat_access_code
+```
 
 Buat akun di Dashboard → Authentication → Users, lalu jadikan super admin
 (blok nomor 7 di `db/setup.sql`, isi emailnya):
@@ -94,6 +108,60 @@ atas untuk alasannya. Seorang jemaat_admin melihat tab Liturgi dan Warta yang
 sama seperti super admin, hanya saja semuanya sudah tersaring ke jemaatnya
 sendiri (RLS, bukan hanya UI) — termasuk tidak bisa memilih jemaat lain di
 formulir manapun.
+
+## Testing
+
+```bash
+npm run test          # sekali jalan
+npm run test:watch    # mode watch
+```
+
+Baru mencakup `src/lib/warta/money.ts` dan `numbering.ts` — logic murni yang
+paling berisiko diam-diam salah hitung/nomor (laporan keuangan warta).
+
+## Sapu file yatim (opsional)
+
+File yang berhasil ter-upload ke bucket `liturgi-files` tapi baris
+liturgi/warta-nya gagal tersimpan (koneksi putus, tab ditutup) numpuk sebagai
+sampah selamanya kalau tidak dibersihkan. Edge function `sweep-orphaned-files`
+(`supabase/functions/`) menghapusnya secara berkala lewat `pg_cron` — hanya
+yang lebih tua dari 24 jam dan tidak dirujuk baris manapun (termasuk yang
+masih di Sampah). Opsional: kalau storage belum kerasa penuh, boleh dilewati
+dulu, tidak mempengaruhi fungsi utama aplikasi.
+
+1. **Install Supabase CLI** (kalau belum ada): `npm install -g supabase`
+   (atau Homebrew/Scoop). Cek dengan `supabase --version`.
+2. **Login & hubungkan ke project** — dari root folder project:
+   ```bash
+   supabase login
+   supabase link --project-ref GANTI_PROJECT_REF
+   ```
+   (`GANTI_PROJECT_REF` = bagian depan URL Supabase kamu, sebelum
+   `.supabase.co`.)
+3. **Set secret** yang dipakai edge function untuk memastikan permintaan
+   memang datang dari cron, bukan sembarang orang yang nemu URL-nya:
+   ```bash
+   supabase secrets set CRON_SECRET=GANTI_STRING_ACAK_PANJANG
+   ```
+4. **Deploy edge function-nya**:
+   ```bash
+   supabase functions deploy sweep-orphaned-files
+   ```
+   Kalau sukses, CLI menampilkan URL function-nya (bentuknya
+   `https://GANTI_PROJECT_REF.supabase.co/functions/v1/sweep-orphaned-files`).
+5. **Aktifkan extension**: Dashboard → Database → Extensions, nyalakan
+   `pg_cron` dan `pg_net`. Sekali saja.
+6. **Jadwalkan** — di SQL Editor, salin blok `cron.schedule(...)` dari
+   `db/setup.sql` section 8, ganti `GANTI_PROJECT_REF` dan
+   `GANTI_CRON_SECRET` (harus sama persis dengan secret di langkah 3), lalu
+   jalankan sekali.
+7. **Tes manual** (opsional, tidak perlu nunggu jadwalnya jalan):
+   ```bash
+   curl -X POST 'https://GANTI_PROJECT_REF.supabase.co/functions/v1/sweep-orphaned-files' \
+     -H 'x-cron-secret: GANTI_STRING_ACAK_PANJANG'
+   ```
+   Responsnya JSON berisi daftar file yang dihapus (kosong kalau memang
+   belum ada yang yatim & cukup umur).
 
 ## Reset database
 
@@ -138,10 +206,13 @@ Admin (khusus super admin, tab **Warta** di panel — URL `/admin/warta` atau
   meninggalkan halaman kalau ada perubahan belum disimpan.
 - Jenis butir: **Teks** (tebal/miring/garis bawah/daftar bernomor), **Tabel**
   (kolom dan baris bebas, baris bisa digeser, rata kiri/tengah/kanan, garis dan
-  nomor otomatis opsional) dan **Tabel keuangan** (kolom Nominal berformat
-  Rupiah, baris total dihitung otomatis). Menu **Dari templat** menyediakan
-  titik awal: warga berulang tahun, ulang tahun pernikahan, kegiatan kategorial,
-  petugas ibadah, info rekening, laporan penerimaan, laporan pengeluaran.
+  nomor otomatis opsional), **Tabel keuangan** (kolom Nominal berformat Rupiah,
+  baris total dihitung otomatis), dan **Gambar** (unggah PNG/JPG/WEBP maks 5 MB
+  ke bucket `liturgi-files` di folder `<slug>/warta/…`; ukuran tampil
+  kecil/sedang/besar/penuh, teks alternatif, keterangan opsional — dipakai
+  untuk QRIS persembahan). Menu **Dari templat** menyediakan titik awal: warga
+  berulang tahun, ulang tahun pernikahan, kegiatan kategorial, petugas ibadah,
+  info rekening, laporan penerimaan, laporan pengeluaran, QRIS persembahan.
 - Isi sel tabel berupa teks biasa: `**tebal**`, `*miring*`, Enter = baris baru.
   (Satu editor TipTap per sel akan terlalu berat.)
 
@@ -154,7 +225,9 @@ Kode: `src/lib/warta/` (tipe, penomoran, parse data dari DB, `money.ts`,
 tabel `api.ts` / `publicApi.ts`) dan `src/components/warta/` (builder, grid tabel,
 editor, tampilan kertas). TipTap dan editor tabel hanya dimuat di admin.
 
-Belum: block Gambar (mis. QRIS), print CSS, admin per-jemaat untuk warta.
+Tombol **Cetak Warta** di halaman publik mencetak hanya warta-nya (bukan viewer
+liturgi/letterhead di sekitarnya) — lihat `body.printing-warta` di
+`WartaDocument.vue` dan `printWarta()` di `LiturgiView.vue`.
 
 ## Konfirmasi
 
@@ -171,7 +244,7 @@ prisma/schema.prisma tabel, kolom, enum, FK
 scripts/             seed jemaat & pendeta (+ data sumber)
 src/lib/tenant.ts    resolve jemaat/admin/root dari URL, lookup publik
 src/lib/adminUsers.ts daftar + cabut akses admin (halaman Kelola Admin)
-src/lib/warta/       tipe, penomoran, parse, money, api tabel warta, renderer, registry block
+src/lib/warta/       tipe, penomoran, parse, money, image (upload/hapus), api tabel warta, renderer, registry block
 src/components/      BrandMark (lambang), AdminQuickNav (tombol pintas), admin/ConfirmDialog, warta/*
 src/stores/          authStore (role admin), liturgiStore (baca publik via RPC)
 src/views/           RootGate + LockedView, public/LiturgiView, admin/*

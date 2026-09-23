@@ -31,6 +31,16 @@ function fail(error: DbError, fallback: string): never {
   throw new Error(fallback)
 }
 
+// Thrown by saveWarta when the row was changed by someone else (another
+// admin, another tab) since this editor loaded it — distinct from "not
+// found" so the UI can offer "timpa" instead of just bouncing to the list.
+export class WartaConflictError extends Error {
+  constructor() {
+    super('Warta ini sudah diubah pihak lain sejak kamu membukanya.')
+    this.name = 'WartaConflictError'
+  }
+}
+
 const SUMMARY_COLUMNS = 'id, jemaatId, tanggal, status, updatedAt, deletedAt'
 
 // Newest first. `sections` is left out on purpose: it's the heavy column and
@@ -89,17 +99,38 @@ export async function createWarta(input: { jemaatId: string; tanggal: string; se
   return data.id as string
 }
 
-export async function saveWarta(id: string, input: { sections: WartaSection[]; status: PublishStatus }): Promise<string> {
-  const { data, error } = await supabase
+// Optimistic concurrency: normally the update is conditioned on `updatedAt`
+// still matching what the editor loaded, so a second admin's save can never
+// silently clobber the first admin's without anyone finding out. Passing
+// `force: true` (after the editor has asked "timpa perubahan mereka?" and
+// the admin said yes) drops that condition and saves unconditionally.
+export async function saveWarta(
+  id: string,
+  input: { sections: WartaSection[]; status: PublishStatus; expectedUpdatedAt: string; force?: boolean },
+): Promise<string> {
+  let query = supabase
     .from('warta')
     .update({ sections: input.sections, status: input.status })
     .eq('id', id)
     .is('deletedAt', null)
-    .select('updatedAt')
+  if (!input.force) query = query.eq('updatedAt', input.expectedUpdatedAt)
+
+  const { data, error } = await query.select('updatedAt')
   if (error) fail(error, 'Gagal menyimpan warta')
-  // 0 rows updated: deleted (or never existed) since the editor was opened.
-  if (!data?.length) throw new Error('Warta tidak ditemukan — mungkin sudah dihapus.')
-  return data[0].updatedAt as string
+  if (data?.length) return data[0].updatedAt as string
+
+  // 0 rows updated — either the row is gone (deleted since the editor
+  // opened it), or it's still there but `updatedAt` moved (someone else
+  // saved first). A second read tells the two apart.
+  const { data: current } = await supabase
+    .from('warta')
+    .select('deletedAt')
+    .eq('id', id)
+    .maybeSingle()
+  if (!current || current.deletedAt) {
+    throw new Error('Warta tidak ditemukan — mungkin sudah dihapus.')
+  }
+  throw new WartaConflictError()
 }
 
 export async function trashWarta(id: string): Promise<void> {

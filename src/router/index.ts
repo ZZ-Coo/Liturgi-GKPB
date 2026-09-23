@@ -1,6 +1,6 @@
 // router/index.ts
 import { createRouter, createWebHistory } from 'vue-router'
-import { resolveTenant } from '@/lib/tenant'
+import { resolveTenant, tenantSegment } from '@/lib/tenant'
 import { useAuthStore } from '@/stores/authStore'
 
 const adminRoutes = [
@@ -44,7 +44,7 @@ const base =
   tenant.kind === 'admin' && tenant.mode === 'path'
     ? '/admin'
     : tenant.kind === 'tenant' && tenant.mode === 'path'
-      ? `/j/${tenant.slug}`
+      ? `/j/${tenantSegment(tenant.slug, tenant.code)}`
       : '/'
 
 export const router = createRouter({

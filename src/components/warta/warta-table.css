@@ -50,4 +50,17 @@
   .warta-table.is-bordered td {
     border-color: #000;
   }
+  /* th/tfoot backgrounds use the theme's --color-paper-deep, which is a
+     DARK tint in dark mode (html.dark) — printing straight from a dark-mode
+     session would otherwise put black text on a near-black box. Force a
+     plain light tint here regardless of theme; ink is already forced to
+     black by .warta-paper's own print rule. */
+  .warta-table th,
+  .warta-table.is-finance tfoot td {
+    background: #f2f2f2 !important;
+    color: #000 !important;
+  }
+  .warta-table .is-invalid {
+    color: #000 !important;
+  }
 }

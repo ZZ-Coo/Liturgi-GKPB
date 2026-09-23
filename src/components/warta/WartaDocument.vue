@@ -100,6 +100,44 @@ const numbered = computed(() => numberSections(props.sections))
     padding: 0;
     color: #000;
     background: #fff;
+    font-size: 11pt;
+  }
+  /* Don't split a section's heading from its first line, or a numbered
+     item's heading from its body, across a page break — keeps "I. KEGIATAN
+     IBADAH" (or "1. Ulang Tahun") from landing alone at the bottom of a
+     page with its content starting fresh on the next one. A whole section
+     is still free to span pages if it's long (a finance table, say). */
+  .warta-section-title,
+  .warta-item-title {
+    break-after: avoid;
+  }
+  .warta-block {
+    break-inside: avoid-page;
   }
 }
+
+/* Public page: a "Cetak Warta" button toggles this class on <body> just
+   before window.print(), so the print output is the warta alone — not the
+   liturgi viewer, letterhead, or nav around it (see LiturgiView.vue). Off
+   by default so a plain Ctrl+P elsewhere in the app is unaffected.
+   Classic "print only this element" trick: hide everything, then re-reveal
+   just the warta paper and pull it out to the top of the page. */
+@media print {
+  body.printing-warta > * {
+    visibility: hidden;
+  }
+  body.printing-warta .warta-paper,
+  body.printing-warta .warta-paper * {
+    visibility: visible;
+  }
+  body.printing-warta .warta-paper {
+    position: absolute;
+    inset: 0;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+  }
+}
+
 </style>

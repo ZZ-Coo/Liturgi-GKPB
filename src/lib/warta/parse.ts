@@ -10,6 +10,8 @@ import {
   WARTA_BLOCK_TYPES,
   type ColumnAlign,
   type FinanceTableData,
+  type ImageData,
+  type ImageWidth,
   type RichDoc,
   type SectionNumbering,
   type TableData,
@@ -69,6 +71,19 @@ function parseFinanceData(data: Record<string, unknown>): FinanceTableData {
   return { columns, rows: parseRows(data.rows, columns.length), totalLabel: asString(data.totalLabel) }
 }
 
+const IMAGE_WIDTHS: readonly ImageWidth[] = ['small', 'medium', 'large', 'full']
+const parseImageWidth = (value: unknown): ImageWidth => (IMAGE_WIDTHS.includes(value as ImageWidth) ? (value as ImageWidth) : 'medium')
+
+function parseImageData(data: Record<string, unknown>): ImageData {
+  return {
+    url: asString(data.url),
+    path: asString(data.path),
+    alt: asString(data.alt),
+    caption: asString(data.caption),
+    width: parseImageWidth(data.width),
+  }
+}
+
 function parseBlock(value: unknown): WartaBlock | null {
   if (!isRecord(value)) return null
   const type = value.type as WartaBlockType
@@ -85,6 +100,8 @@ function parseBlock(value: unknown): WartaBlock | null {
       return { id, type, ...title, data: parseTableData(data) }
     case 'financeTable':
       return { id, type, ...title, data: parseFinanceData(data) }
+    case 'image':
+      return { id, type, ...title, data: parseImageData(data) }
     default:
       return { id, type: 'text', ...title, data: { content: parseRichDoc(data.content) } }
   }

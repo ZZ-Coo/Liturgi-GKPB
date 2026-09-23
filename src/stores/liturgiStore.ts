@@ -29,8 +29,8 @@ interface LiturgiState {
 // All dates that have something published for this jemaat (ISO yyyy-mm-dd).
 // One row per week or so, so fetching the whole list is cheap, and the
 // default-date / prev / next logic below runs on it client-side.
-async function fetchPublishedDates(slug: string): Promise<string[]> {
-  const { data, error } = await supabase.rpc('get_public_dates', { p_slug: slug })
+async function fetchPublishedDates(slug: string, code: string | null): Promise<string[]> {
+  const { data, error } = await supabase.rpc('get_public_dates', { p_slug: slug, p_code: code })
   if (error) throw error
   return ((data ?? []) as { tanggal: string }[]).map((row) => row.tanggal)
 }
@@ -43,7 +43,7 @@ export const useLiturgiStore = defineStore('liturgi', {
   }),
 
   actions: {
-    async fetchBySlugAndDate(slug: string, tanggal: string, sesi: 'PAGI' | 'SIANG' | 'SORE') {
+    async fetchBySlugAndDate(slug: string, tanggal: string, sesi: 'PAGI' | 'SIANG' | 'SORE', code: string | null = null) {
       this.loading = true
       this.error = null
       this.current = null
@@ -55,6 +55,7 @@ export const useLiturgiStore = defineStore('liturgi', {
           p_slug: slug,
           p_tanggal: tanggal,
           p_sesi: sesi,
+          p_code: code,
         })
 
         if (error) throw error
@@ -73,9 +74,9 @@ export const useLiturgiStore = defineStore('liturgi', {
     // date (today counts as "upcoming"), or if nothing's scheduled
     // ahead, the most recent one that already happened. Only used when
     // the URL doesn't already specify a date via /:tanggal.
-    async resolveDefaultDate(slug: string, todayIso: string): Promise<string> {
+    async resolveDefaultDate(slug: string, todayIso: string, code: string | null = null): Promise<string> {
       try {
-        const dates = await fetchPublishedDates(slug)
+        const dates = await fetchPublishedDates(slug, code)
         const upcoming = dates.filter((d) => d >= todayIso).sort()[0]
         if (upcoming) return upcoming
         const past = dates.filter((d) => d < todayIso).sort().reverse()[0]
@@ -96,9 +97,10 @@ export const useLiturgiStore = defineStore('liturgi', {
       slug: string,
       fromTanggal: string,
       direction: 'prev' | 'next',
+      code: string | null = null,
     ): Promise<string | null> {
       try {
-        const dates = await fetchPublishedDates(slug)
+        const dates = await fetchPublishedDates(slug, code)
         if (direction === 'next') {
           return dates.filter((d) => d > fromTanggal).sort()[0] ?? null
         }

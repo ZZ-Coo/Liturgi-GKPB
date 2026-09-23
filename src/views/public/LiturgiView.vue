@@ -6,7 +6,7 @@ import { useLiturgiStore } from '@/stores/liturgiStore'
 import { tenant } from '@/router'
 import { liturgicalTint } from '@/lib/liturgicalColor'
 import { toIsoDate } from '@/lib/date'
-import { Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Sunrise, Sun, Sunset, CalendarDays, BookOpenText, Loader2, ChevronLeft, ChevronRight, Printer } from 'lucide-vue-next'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import AdminQuickNav from '@/components/AdminQuickNav.vue'
 import BrandMark from '@/components/BrandMark.vue'
@@ -25,6 +25,7 @@ const router = useRouter()
 const liturgi = useLiturgiStore()
 // Public reads are keyed by slug (RPC), not by jemaat id.
 const slug = tenant.kind === 'tenant' ? tenant.slug : ''
+const code = tenant.kind === 'tenant' ? tenant.code : null
 
 type Sesi = 'PAGI' | 'SIANG' | 'SORE'
 const SESI_OPTIONS: { value: Sesi; label: string; icon: typeof Sunrise }[] = [
@@ -62,7 +63,7 @@ const tint = computed(() => liturgicalTint(liturgi.current?.warnaLiturgi))
 
 async function load() {
   if (!jemaatId.value) return
-  await liturgi.fetchBySlugAndDate(slug, tanggal.value, sesi.value)
+  await liturgi.fetchBySlugAndDate(slug, tanggal.value, sesi.value, code)
 }
 
 // The warta belongs to the DATE, not to a sesi (one document covers Pagi and
@@ -76,12 +77,27 @@ async function loadWarta() {
   const token = ++wartaToken
   warta.value = []
   try {
-    const sections = await fetchPublicWarta(slug, tanggal.value)
+    const sections = await fetchPublicWarta(slug, tanggal.value, code)
     if (token === wartaToken) warta.value = sections
   } catch (err) {
     // The liturgi is the main content; a warta that fails to load just isn't shown.
     console.error('loadWarta failed:', err)
   }
+}
+
+// "Cetak Warta": prints ONLY the warta, not the liturgi viewer/letterhead/
+// nav around it — see the body.printing-warta rules in WartaDocument.vue.
+// The class comes off again on 'afterprint' (fires after both an actual
+// print and a cancelled print-preview), so a stray next Ctrl+P elsewhere
+// in the app isn't accidentally scoped too.
+function printWarta() {
+  function cleanup() {
+    document.body.classList.remove('printing-warta')
+    window.removeEventListener('afterprint', cleanup)
+  }
+  document.body.classList.add('printing-warta')
+  window.addEventListener('afterprint', cleanup)
+  window.print()
 }
 
 function switchSesi(next: Sesi) {
@@ -115,8 +131,8 @@ const nextDate = ref<string | null>(null)
 async function refreshAdjacentDates() {
   if (!jemaatId.value) return
   const [prev, next] = await Promise.all([
-    liturgi.findAdjacentDate(slug, tanggal.value, 'prev'),
-    liturgi.findAdjacentDate(slug, tanggal.value, 'next'),
+    liturgi.findAdjacentDate(slug, tanggal.value, 'prev', code),
+    liturgi.findAdjacentDate(slug, tanggal.value, 'next', code),
   ])
   prevDate.value = prev
   nextDate.value = next
@@ -141,7 +157,7 @@ onMounted(async () => {
     return
   }
 
-  const jemaat = await fetchTenantBySlug(tenant.slug)
+  const jemaat = await fetchTenantBySlug(tenant.slug, tenant.code)
   tenantLoading.value = false
   if (!jemaat) return
   jemaatId.value = jemaat.id
@@ -152,7 +168,7 @@ onMounted(async () => {
   // a specific date — an explicit /:tanggal link should never be
   // silently redirected to a different date.
   if (!explicitTanggal) {
-    tanggal.value = await liturgi.resolveDefaultDate(slug, toIsoDate(new Date()))
+    tanggal.value = await liturgi.resolveDefaultDate(slug, toIsoDate(new Date()), code)
   }
 
   await Promise.all([loadWithSesiFallback(), loadWarta()])
@@ -306,7 +322,14 @@ onMounted(async () => {
         <p v-else class="text-center text-sm text-muted">Belum ada liturgi untuk sesi ini.</p>
 
         <!-- warta jemaat for this date, straight under the liturgi -->
-        <WartaDocument v-if="!tenantLoading && jemaatId && warta.length" :sections="warta" />
+        <template v-if="!tenantLoading && jemaatId && warta.length">
+          <div class="flex justify-end">
+            <button type="button" class="btn print:hidden" @click="printWarta">
+              <Printer class="h-4 w-4" /> Cetak Warta
+            </button>
+          </div>
+          <WartaDocument :sections="warta" />
+        </template>
       </div>
     </div>
   </div>

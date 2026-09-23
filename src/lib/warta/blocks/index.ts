@@ -12,13 +12,14 @@
 //              block type with headers and a suggested title already filled in.
 
 import { defineAsyncComponent, type Component } from 'vue'
-import { AlignLeft, Table2, Wallet } from 'lucide-vue-next'
-import type { FinanceTableData, TableData, WartaBlock, WartaBlockType } from '../types'
+import { AlignLeft, Table2, Wallet, Image } from 'lucide-vue-next'
+import type { FinanceTableData, ImageData, TableData, WartaBlock, WartaBlockType } from '../types'
 import { emptyRichDoc } from '../richtext'
 import { newId } from '../id'
 import TextBlockView from '@/components/warta/blocks/TextBlockView.vue'
 import TableBlockView from '@/components/warta/blocks/TableBlockView.vue'
 import FinanceTableBlockView from '@/components/warta/blocks/FinanceTableBlockView.vue'
+import ImageBlockView from '@/components/warta/blocks/ImageBlockView.vue'
 
 export interface BlockPreset {
   key: string
@@ -52,6 +53,10 @@ function table(headers: string[], opts: { numbered?: boolean; bordered?: boolean
 
 function finance(columns: FinanceTableData['columns'], totalLabel: string): FinanceTableData {
   return { columns, rows: [blankRow(columns.length)], totalLabel }
+}
+
+function emptyImage(): ImageData {
+  return { url: '', path: '', alt: '', caption: '', width: 'medium' }
 }
 
 export const blockRegistry: Record<WartaBlockType, BlockDefinition> = {
@@ -100,6 +105,15 @@ export const blockRegistry: Record<WartaBlockType, BlockDefinition> = {
     ],
     Renderer: FinanceTableBlockView,
     Editor: defineAsyncComponent(() => import('@/components/warta/blocks/FinanceTableBlockEditor.vue')),
+  },
+  image: {
+    type: 'image',
+    label: 'Gambar',
+    icon: Image,
+    createData: emptyImage,
+    presets: [{ key: 'qris', label: 'QRIS Persembahan', title: 'Persembahan', createData: () => ({ ...emptyImage(), width: 'small' }) }],
+    Renderer: ImageBlockView,
+    Editor: defineAsyncComponent(() => import('@/components/warta/blocks/ImageBlockEditor.vue')),
   },
 }
 

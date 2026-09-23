@@ -272,8 +272,23 @@ create policy "warta: admin manages own jemaat"
 -- Kolom dikualifikasi (j.name, l.tanggal, ...) karena `returns table`
 -- membuat parameter OUT bernama sama — jebakan yang sama dengan bug
 -- `name` di storage policy dulu.
+--
+-- p_code: kode akses opsional (lihat kolom jemaat.accessCode dan
+-- src/lib/tenant.ts). Kalau accessCode jemaat itu NULL (default —
+-- kebanyakan jemaat), p_code diabaikan dan slug polos tetap jalan seperti
+-- biasa. Kalau accessCode-nya diisi, p_code WAJIB cocok persis, kalau
+-- tidak jemaat itu dianggap "tidak ketemu" — sama seperti slug salah,
+-- supaya tidak bocor informasi soal jemaat mana yang butuh kode.
+--
+-- Ganti signature (nambah p_code) berarti drop dulu versi lama, bukan cuma
+-- create-or-replace — kalau tidak, Postgres nganggep dua fungsi beda
+-- (overload), dan pemanggilan dengan 1 argumen jadi ambigu.
+drop function if exists public.get_public_jemaat(text);
+drop function if exists public.get_public_liturgi(text, date, public."Sesi");
+drop function if exists public.get_public_warta(text, date);
+drop function if exists public.get_public_dates(text);
 
-create or replace function public.get_public_jemaat(p_slug text)
+create or replace function public.get_public_jemaat(p_slug text, p_code text default null)
 returns table (id text, slug text, name text, category text)
 language sql
 security definer
@@ -283,10 +298,11 @@ as $$
   select j.id, j.slug, j.name, j.category
   from public.jemaat j
   where j.slug = p_slug
+    and (j."accessCode" is null or j."accessCode" = p_code)
   limit 1
 $$;
 
-create or replace function public.get_public_liturgi(p_slug text, p_tanggal date, p_sesi public."Sesi")
+create or replace function public.get_public_liturgi(p_slug text, p_tanggal date, p_sesi public."Sesi", p_code text default null)
 returns setof public.liturgi
 language sql
 security definer
@@ -297,6 +313,7 @@ as $$
   from public.liturgi l
   join public.jemaat j on j.id = l."jemaatId"
   where j.slug = p_slug
+    and (j."accessCode" is null or j."accessCode" = p_code)
     and l.tanggal = p_tanggal
     and l.sesi = p_sesi
     and l.status = 'PUBLISHED'
@@ -304,7 +321,7 @@ as $$
   limit 1
 $$;
 
-create or replace function public.get_public_warta(p_slug text, p_tanggal date)
+create or replace function public.get_public_warta(p_slug text, p_tanggal date, p_code text default null)
 returns setof public.warta
 language sql
 security definer
@@ -315,6 +332,7 @@ as $$
   from public.warta w
   join public.jemaat j on j.id = w."jemaatId"
   where j.slug = p_slug
+    and (j."accessCode" is null or j."accessCode" = p_code)
     and w.tanggal = p_tanggal
     and w.status = 'PUBLISHED'
     and w."deletedAt" is null
@@ -323,7 +341,7 @@ $$;
 
 -- Tanggal yang punya liturgi ATAU warta terbit — untuk tanggal default
 -- dan panah ◀▶ di halaman publik (dihitung di client dari daftar ini).
-create or replace function public.get_public_dates(p_slug text)
+create or replace function public.get_public_dates(p_slug text, p_code text default null)
 returns table (tanggal date)
 language sql
 security definer
@@ -333,23 +351,27 @@ as $$
   select l.tanggal
   from public.liturgi l
   join public.jemaat j on j.id = l."jemaatId"
-  where j.slug = p_slug and l.status = 'PUBLISHED' and l."deletedAt" is null
+  where j.slug = p_slug
+    and (j."accessCode" is null or j."accessCode" = p_code)
+    and l.status = 'PUBLISHED' and l."deletedAt" is null
   union
   select w.tanggal
   from public.warta w
   join public.jemaat j on j.id = w."jemaatId"
-  where j.slug = p_slug and w.status = 'PUBLISHED' and w."deletedAt" is null
+  where j.slug = p_slug
+    and (j."accessCode" is null or j."accessCode" = p_code)
+    and w.status = 'PUBLISHED' and w."deletedAt" is null
   order by 1 desc
 $$;
 
-revoke all on function public.get_public_jemaat(text) from public;
-revoke all on function public.get_public_liturgi(text, date, public."Sesi") from public;
-revoke all on function public.get_public_warta(text, date) from public;
-revoke all on function public.get_public_dates(text) from public;
-grant execute on function public.get_public_jemaat(text) to anon, authenticated;
-grant execute on function public.get_public_liturgi(text, date, public."Sesi") to anon, authenticated;
-grant execute on function public.get_public_warta(text, date) to anon, authenticated;
-grant execute on function public.get_public_dates(text) to anon, authenticated;
+revoke all on function public.get_public_jemaat(text, text) from public;
+revoke all on function public.get_public_liturgi(text, date, public."Sesi", text) from public;
+revoke all on function public.get_public_warta(text, date, text) from public;
+revoke all on function public.get_public_dates(text, text) from public;
+grant execute on function public.get_public_jemaat(text, text) to anon, authenticated;
+grant execute on function public.get_public_liturgi(text, date, public."Sesi", text) to anon, authenticated;
+grant execute on function public.get_public_warta(text, date, text) to anon, authenticated;
+grant execute on function public.get_public_dates(text, text) to anon, authenticated;
 
 
 -- ── 6. Storage: bucket liturgi-files ────────────────────────────────────
@@ -447,6 +469,88 @@ create policy "liturgi-files: admin delete"
 --
 -- Mencabut akses (akunnya tetap ada, tapi bukan admin lagi):
 -- delete from public.admin_users where user_id = (select id from auth.users where email = 'GANTI_EMAIL');
+--
+-- Kasih kode akses ke jemaat (link publiknya jadi /j/<slug>-<kode>, lihat
+-- src/lib/tenant.ts) — dipakai kalau slug-nya sendirian mulai kerasa
+-- gampang ditebak (lihat README "Model keamanan"). Karakter pertama kode
+-- SENGAJA selalu angka: itu yang dipakai src/lib/tenant.ts buat
+-- membedakan "slug-berkode" dari slug polos saat mem-parsing URL.
+-- update public.jemaat
+--   set "accessCode" = substr('0123456789', (random() * 10)::int + 1, 1)
+--                       || (select string_agg(substr('0123456789abcdefghijklmnopqrstuvwxyz', (random() * 36)::int + 1, 1), '')
+--                           from generate_series(1, 5))
+--   where slug = 'GANTI_SLUG';
+--
+-- Copot lagi (balik ke link tanpa kode):
+-- update public.jemaat set "accessCode" = null where slug = 'GANTI_SLUG';
+--
+-- Lihat kode yang sedang aktif (buat disalin ke link):
+-- select slug, "accessCode" from public.jemaat where "accessCode" is not null;
+
+
+-- ── 8. Sapu file yatim (opsional) ───────────────────────────────────────
+-- File di bucket liturgi-files yang berhasil ter-upload tapi baris
+-- liturgi/warta-nya gagal tersimpan (koneksi putus, tab ditutup) tidak
+-- pernah dibersihkan sendiri — file itu "yatim", makan storage selamanya.
+-- Edge function `sweep-orphaned-files` (supabase/functions/) menghapusnya,
+-- TAPI hanya yang lebih tua dari 24 jam (grace period, biar upload yang
+-- masih berlangsung tidak ikut kehapus) dan tidak dirujuk baris manapun
+-- (termasuk yang di Sampah — soft delete masih bisa dipulihkan).
+--
+-- Fungsi ini yang dipakai edge function untuk tahu path mana saja yang
+-- MASIH dirujuk. SECURITY DEFINER + tanpa grant ke anon/authenticated:
+-- hanya dipanggil lewat service_role key (dari edge function), tidak
+-- pernah dari client.
+create or replace function public.referenced_storage_paths()
+returns table (path text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select regexp_replace(l."fileUrl", '^.*/liturgi-files/', '') as path
+  from public.liturgi l
+  where l."fileUrl" is not null
+
+  union
+
+  select trim(both '"' from elem::text) as path
+  from public.warta w,
+       lateral jsonb_path_query(
+         w.sections,
+         '$[*].blocks[*] ? (@.type == "image").data.path'
+       ) as elem
+$$;
+
+revoke all on function public.referenced_storage_paths() from public, anon, authenticated;
+
+-- Jadwal: sekali saja, di Dashboard → Database → Extensions, aktifkan
+-- `pg_cron` dan `pg_net`. Lalu (1) deploy edge function-nya:
+--   supabase functions deploy sweep-orphaned-files
+--   supabase secrets set CRON_SECRET=<string acak panjang>
+-- lalu (2) jalankan blok ini sekali dengan GANTI_PROJECT_REF dan
+-- GANTI_CRON_SECRET diisi (harus sama persis dengan secret di atas):
+--
+-- select cron.schedule(
+--   'sweep-orphaned-files',
+--   '17 2 * * *', -- 02:17 tiap hari — di luar jam kunjungan situs, menit
+--                 -- ganjil biar tidak selalu bentrok jadwal cron lain
+--   $cron$
+--   select net.http_post(
+--     url := 'https://GANTI_PROJECT_REF.supabase.co/functions/v1/sweep-orphaned-files',
+--     headers := jsonb_build_object('x-cron-secret', 'GANTI_CRON_SECRET'),
+--     timeout_milliseconds := 20000
+--   );
+--   $cron$
+-- );
+--
+-- Ganti jadwal atau matikan:
+--   select cron.alter_job((select jobid from cron.job where jobname = 'sweep-orphaned-files'), schedule := '...');
+--   select cron.unschedule('sweep-orphaned-files');
+--
+-- Uji manual tanpa nunggu jadwal (isi project ref + secret yang sama):
+--   curl -X POST 'https://GANTI_PROJECT_REF.supabase.co/functions/v1/sweep-orphaned-files' \
+--     -H 'x-cron-secret: GANTI_CRON_SECRET'
 
 
 -- ── Verify ──────────────────────────────────────────────────────────────

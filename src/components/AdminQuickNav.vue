@@ -19,6 +19,7 @@ import { LayoutDashboard, Library, Church } from 'lucide-vue-next'
 const props = defineProps<{
   links: Array<'admin' | 'root' | 'jemaat'>
   jemaatSlug?: string
+  jemaatAccessCode?: string | null
   compact?: boolean
 }>()
 
@@ -48,7 +49,7 @@ const items = computed<NavItem[]>(() => {
     } else if (link === 'root' && auth.isSuperAdmin) {
       out.push({ key: link, label: 'Semua jemaat', title: 'Daftar semua jemaat', href: buildRootUrl(), icon: Library })
     } else if (link === 'jemaat' && props.jemaatSlug) {
-      out.push({ key: link, label: 'Halaman jemaat', title: 'Lihat halaman publik jemaat', href: buildTenantUrl(props.jemaatSlug), icon: Church })
+      out.push({ key: link, label: 'Halaman jemaat', title: 'Lihat halaman publik jemaat', href: buildTenantUrl(props.jemaatSlug, props.jemaatAccessCode), icon: Church })
     }
   }
   return out

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, provide } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, RouterLink } from 'vue-router'
 import { ArrowLeft, Save, Loader2, Trash2 } from 'lucide-vue-next'
 import AdminShell from '@/components/admin/AdminShell.vue'
 import WartaBuilder from '@/components/warta/WartaBuilder.vue'
 import WartaDocument from '@/components/warta/WartaDocument.vue'
-import { getWarta, saveWarta, trashWarta } from '@/lib/warta/api'
+import { getWarta, saveWarta, trashWarta, WartaConflictError } from '@/lib/warta/api'
 import { fetchAllJemaat } from '@/lib/tenant'
+import { WARTA_SLUG_KEY } from '@/lib/warta/context'
 import { pushToast } from '@/composables/toast'
 import type { PublishStatus, WartaSection } from '@/lib/warta/types'
 import { askConfirm, confirmTrash } from '@/composables/confirm'
@@ -20,10 +21,16 @@ const loadError = ref<string | null>(null)
 const notFound = ref(false)
 
 const jemaatName = ref('')
+const jemaatSlug = ref('')
+provide(WARTA_SLUG_KEY, jemaatSlug) // consumed by ImageBlockEditor for the upload path
 const tanggal = ref('')
 const sections = ref<WartaSection[]>([])
 const status = ref<PublishStatus>('DRAFT')
 const saving = ref(false)
+// What this editor last saw as the row's updatedAt — sent back on save so
+// the DB can tell us if someone else (another admin, another tab) saved
+// over it in the meantime. See save()/WartaConflictError below.
+const loadedUpdatedAt = ref('')
 
 // "Unsaved changes" = the current content differs from what was last loaded
 // or saved. Compared as JSON, so it's true to what would actually be sent.
@@ -52,7 +59,10 @@ onMounted(async () => {
     tanggal.value = record.tanggal
     sections.value = record.sections
     status.value = record.status
-    jemaatName.value = jemaatList.find((j) => j.id === record.jemaatId)?.name ?? ''
+    loadedUpdatedAt.value = record.updatedAt
+    const jemaat = jemaatList.find((j) => j.id === record.jemaatId)
+    jemaatName.value = jemaat?.name ?? ''
+    jemaatSlug.value = jemaat?.slug ?? ''
     saved.value = snapshot()
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : 'Gagal memuat warta'
@@ -66,18 +76,44 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
 
-async function save() {
-  if (saving.value || !dirty.value) return
+async function save(force = false) {
+  if (saving.value || (!dirty.value && !force)) return
   saving.value = true
   // Remember exactly what was sent: edits typed while the request is in
   // flight must stay "unsaved".
   const sent = snapshot()
   try {
-    await saveWarta(id, { sections: sections.value, status: status.value })
+    const updatedAt = await saveWarta(id, {
+      sections: sections.value,
+      status: status.value,
+      expectedUpdatedAt: loadedUpdatedAt.value,
+      force,
+    })
     saved.value = sent
+    loadedUpdatedAt.value = updatedAt
     pushToast(status.value === 'PUBLISHED' ? 'Tersimpan — warta tampil ke jemaat' : 'Draf tersimpan')
   } catch (err) {
-    pushToast(err instanceof Error ? err.message : 'Gagal menyimpan', 'error')
+    if (err instanceof WartaConflictError) {
+      // Someone else (admin lain / tab lain) sudah menyimpan warta ini
+      // duluan. Tawarkan menimpa dengan versi yang sedang diedit di sini —
+      // tapi biarkan admin memilih, jangan pernah menimpa diam-diam.
+      const overwrite = await askConfirm({
+        title: 'Warta ini sudah diubah pihak lain',
+        message:
+          'Kemungkinan admin lain (atau tab lain) menyimpan perubahan setelah kamu membuka warta ini. Timpa dengan versi yang sedang kamu edit? Perubahan mereka akan hilang. Kalau tidak yakin, muat ulang halaman dulu untuk melihat versi terbaru.',
+        confirmLabel: 'Timpa dengan punyaku',
+        cancelLabel: 'Batal',
+        tone: 'danger',
+      })
+      if (overwrite) {
+        saving.value = false
+        await save(true)
+        return
+      }
+      pushToast('Tidak disimpan — muat ulang untuk melihat perubahan terbaru', 'error')
+    } else {
+      pushToast(err instanceof Error ? err.message : 'Gagal menyimpan', 'error')
+    }
   } finally {
     saving.value = false
   }
@@ -200,7 +236,7 @@ onBeforeRouteLeave(async () => {
             <template v-else>Semua perubahan tersimpan.</template>
           </p>
         </div>
-        <button type="button" class="btn-primary" :disabled="!dirty || saving" @click="save">
+        <button type="button" class="btn-primary" :disabled="!dirty || saving" @click="save()">
           <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
           <Save v-else class="h-4 w-4" />
           Simpan

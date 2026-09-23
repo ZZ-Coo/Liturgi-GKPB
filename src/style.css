@@ -77,6 +77,14 @@
   }
 }
 
+/* Only the warta print flow (LiturgiView "Cetak Warta" button) prints
+   anything from this app today — liturgi itself is downloaded as the
+   original PDF/DOCX instead (see PdfViewer/DocxViewer) — so a plain page
+   margin here is enough without needing a per-page-type override. */
+@page {
+  margin: 1.5cm;
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line

@@ -1,0 +1,34 @@
+/* Gambar block — published page and builder preview share these rules.
+   Width variants cap how much of the paper's content column an image takes;
+   it never exceeds the column itself (max-width: 100%) even at "full". */
+.warta-image-figure {
+  margin: 0.35rem auto;
+  text-align: center;
+}
+.warta-image-figure img {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--color-line));
+}
+.warta-image-figure.w-small { max-width: 10rem; }
+.warta-image-figure.w-medium { max-width: 16rem; }
+.warta-image-figure.w-large { max-width: 24rem; }
+.warta-image-figure.w-full { max-width: 100%; }
+.warta-image-caption {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: rgb(var(--color-muted));
+}
+@media print {
+  .warta-image-figure img {
+    border-color: #000;
+  }
+  /* --color-muted is a light gray in dark mode — printing from a dark-mode
+     session would otherwise make the caption barely visible on paper. */
+  .warta-image-caption {
+    color: #333 !important;
+  }
+}

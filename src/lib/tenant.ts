@@ -9,8 +9,30 @@ const RESERVED_SUBDOMAINS = ['admin', 'www']
 
 export type TenantResolution =
   | { kind: 'admin'; mode: 'subdomain' | 'path' }
-  | { kind: 'tenant'; slug: string; mode: 'subdomain' | 'path' }
+  | { kind: 'tenant'; slug: string; code: string | null; mode: 'subdomain' | 'path' }
   | { kind: 'root' }
+
+// An access code (see JemaatRecord.accessCode) is a 6-character suffix,
+// hyphen-joined onto the slug, that ALWAYS starts with a digit:
+// /j/hosana-kwanji-x7k2f9. Jemaat slugs are plain Indonesian words and never
+// contain digits, so requiring the code's first character to be one is what
+// makes "hosana-kwanji-x7k2f9" unambiguously split into slug "hosana-kwanji"
+// + code "x7k2f9" — and, just as importantly, makes a plain coded-less slug
+// like "hosana-kwanji" impossible to misread as slug "hosana" + code
+// "kwanji" just because its last hyphenated word happens to be 6 characters.
+const CODE_SUFFIX = /^(.+)-(\d[a-z0-9]{5})$/
+
+function splitSlugAndCode(segment: string): { slug: string; code: string | null } {
+  const match = CODE_SUFFIX.exec(segment)
+  return match ? { slug: match[1], code: match[2] } : { slug: segment, code: null }
+}
+
+// Inverse of splitSlugAndCode — the literal URL segment for a slug+code
+// pair. Exported so router.ts can rebuild the exact path-mode base
+// (`/j/<segment>`) that was actually matched, code included.
+export function tenantSegment(slug: string, code?: string | null): string {
+  return code ? `${slug}-${code}` : slug
+}
 
 // Resolves which "app" to show: admin panel, a specific jemaat's liturgi
 // page, or the root "pilih jemaat" landing page.
@@ -41,7 +63,7 @@ export function resolveTenant(
   if (host.endsWith(suffix)) {
     const subdomain = host.slice(0, -suffix.length)
     if (RESERVED_SUBDOMAINS.includes(subdomain)) return { kind: 'admin', mode: 'subdomain' }
-    if (subdomain && !subdomain.includes('.')) return { kind: 'tenant', slug: subdomain, mode: 'subdomain' }
+    if (subdomain && !subdomain.includes('.')) return { kind: 'tenant', ...splitSlugAndCode(subdomain), mode: 'subdomain' }
     // malformed subdomain (nested/blank) — falls through to the path check
   }
 
@@ -51,7 +73,7 @@ export function resolveTenant(
   if (isRootDomain || !host.endsWith(suffix)) {
     if (pathname === '/admin' || pathname.startsWith('/admin/')) return { kind: 'admin', mode: 'path' }
     const tenantMatch = pathname.match(/^\/j\/([^/]+)/)
-    if (tenantMatch) return { kind: 'tenant', slug: tenantMatch[1], mode: 'path' }
+    if (tenantMatch) return { kind: 'tenant', ...splitSlugAndCode(tenantMatch[1]), mode: 'path' }
   }
 
   return { kind: 'root' }
@@ -75,11 +97,12 @@ function urlContext() {
   }
 }
 
-export function buildTenantUrl(slug: string): string {
+export function buildTenantUrl(slug: string, accessCode?: string | null): string {
+  const segment = tenantSegment(slug, accessCode)
   const ctx = urlContext()
-  if (ctx.canUseSubdomain) return ctx.origin(slug)
+  if (ctx.canUseSubdomain) return ctx.origin(segment)
   // No wildcard domain yet (e.g. still on *.vercel.app) — path-based link.
-  return `/j/${slug}`
+  return `/j/${segment}`
 }
 
 // Link to the "pilih jemaat" landing page (locked for everyone but a
@@ -100,14 +123,20 @@ export interface JemaatRecord {
   slug: string
   name: string
   category: string | null
+  // Only meaningful on the admin side (fetchAllJemaat) — the public lookup
+  // (fetchTenantBySlug) never returns this, since the whole point is that
+  // an anon visitor can't discover it from the API. null = link works with
+  // just the slug, no code needed.
+  accessCode?: string | null
 }
 
 // Public lookup — anon has no direct access to the `jemaat` table (see
-// db/setup.sql), so this goes through get_public_jemaat(slug), which only
-// ever returns the one jemaat whose slug was asked for.
-export async function fetchTenantBySlug(slug: string): Promise<JemaatRecord | null> {
+// db/setup.sql), so this goes through get_public_jemaat(slug, code), which
+// only ever returns the one jemaat whose slug was asked for, and only if
+// its accessCode (when it has one) matches what was passed.
+export async function fetchTenantBySlug(slug: string, code: string | null = null): Promise<JemaatRecord | null> {
   try {
-    const { data, error } = await supabase.rpc('get_public_jemaat', { p_slug: slug })
+    const { data, error } = await supabase.rpc('get_public_jemaat', { p_slug: slug, p_code: code })
 
     if (error) {
       console.error('fetchTenantBySlug failed:', error.message)
@@ -131,7 +160,7 @@ export async function fetchAllJemaat(): Promise<JemaatRecord[]> {
   try {
     const { data, error } = await supabase
       .from('jemaat')
-      .select('id, slug, name, category')
+      .select('id, slug, name, category, accessCode')
       .order('name', { ascending: true })
 
     if (error) {

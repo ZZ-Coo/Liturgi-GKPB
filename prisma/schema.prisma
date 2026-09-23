@@ -23,12 +23,19 @@ datasource db {
 }
 
 model Jemaat {
-  id        String   @id @default(dbgenerated("gen_random_uuid()"))
-  slug      String   @unique // "hosana-kwanji" -> /j/hosana-kwanji
-  name      String
-  category  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  slug       String   @unique // "hosana-kwanji" -> /j/hosana-kwanji
+  name       String
+  category   String?
+  // Optional extra layer on top of the slug: when set, the public link
+  // becomes /j/<slug>-<accessCode> and the bare slug stops resolving (see
+  // get_public_jemaat in db/setup.sql). Null by default — a slug on its
+  // own is enough for now; this is here for when it stops being enough
+  // (see README "Model keamanan"). Set/cleared via the SQL snippet in
+  // db/setup.sql section 7, not through the app.
+  accessCode String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
 
   liturgi Liturgi[]
   warta   Warta[]
